@@ -5,10 +5,10 @@ Installing pytextseg
 Prerequisites
 =============
 
-- Python 2.3 or later is required.  Python 3 has not been supported yet.
+- Python 2.3 or later is required.  Python 3.x will be supported.
 
-- Sombok library.  If you don't have it, build and install it using
-  bundled source.
+- Sombok library 2.1.0 or later.  If you don't have it, build and install 
+  it using source package.
 
 Install
 =======

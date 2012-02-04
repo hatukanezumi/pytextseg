@@ -3,17 +3,32 @@
 #include "structmember.h"
 
 #if PY_MAJOR_VERSION == 2
-#    if PY_MINOR_VERSION <= 4
-	typedef int Py_ssize_t;
+#   if PY_MINOR_VERSION <= 3
+#       define Py_RETURN_NONE return Py_INCREF(Py_None), Py_None
+#   endif
+#   if PY_MINOR_VERSION <= 4
+        typedef int Py_ssize_t;
 #	define ARG_FORMAT_SSIZE_T "i"
 #	define PyInt_FromSsize_t(i) PyInt_FromLong(i)
-#    else /* PY_MINOR_VERSION */
+#       define PyInt_AsSsize_t(o) ((Py_ssize_t)PyInt_AsLong(o))
+#       define PyLong_AsSsize_t(o) ((Py_ssize_t)PyLong_AsLong(o))
+#   else /* PY_MINOR_VERSION */
 #	define ARG_FORMAT_SSIZE_T "n"
-#    endif /* PY_MINOR_VERSION */
-#endif /* PY_MAJOR_VERSION */
-
-#ifndef Py_TYPE
-#    define Py_TYPE(o) ((o)->ob_type)
+#   endif /* PY_MINOR_VERSION */
+#   if PY_MINOR_VERSION <= 5
+#       define Py_TYPE(o) ((o)->ob_type)
+#       define PyBytes_Check(o) PyString_Check(o)
+#       define PyBytes_AsString(o) PyString_AsString(o)
+#   endif
+#elif PY_MAJOR_VERSION >= 3
+#   define ARG_FORMAT_SSIZE_T "n"
+#   define PyInt_Check(o) PyLong_Check(o)
+#   define PyInt_FromSsize_t(o) PyLong_FromSsize_t(o)
+#   define PyInt_FromLong(o) PyLong_FromLong(o)
+#   define PyInt_AsLong(o) PyLong_AsLong(o)
+#   define PyObject_Unicode(o) PyObject_Str(o)
+#   define PyString_Check(s) PyUnicode_Check(s)
+#   define PyString_FromString(s) PyUnicode_FromString(s)
 #endif
 
 /***
@@ -51,9 +66,6 @@ unicode_ToCstruct(unistr_t *unistr, PyObject *pyobj)
     PyObject *pystr;
     Py_UNICODE *str;
     Py_ssize_t len;
-#ifndef Py_UNICODE_WIDE
-    Py_ssize_t j;
-#endif /* Py_UNICODE_WIDE */
 
     if (pyobj == NULL)
 	return NULL;
@@ -84,15 +96,7 @@ unicode_ToCstruct(unistr_t *unistr, PyObject *pyobj)
     }
 
 #ifndef Py_UNICODE_WIDE
-    for (i = 0, j = 0; i < len; i++, j++)
-	if (0xD800 <= str[i] && str[i] <= 0xDBFF && i + 1 < len &&
-	    0xDC00 <= str[i + 1] && str[i + 1] <= 0xDFFF) {
-	    unistr->str[j] = (str[i] & 0x3FF) << 10 + (str[i+1] & 0x3FF) +
-	    0x10000;
-	    i++;
-	} else
-	    unistr->str[j] = str[i];
-    unistr->len = j;
+#   error "Not yet implemented."
 #else /* Py_UNICODE_WIDE */
     /* sizeof(unichar_t) is sizeof(Py_UNICODE). */
     Py_UNICODE_COPY(unistr->str, str, len);
@@ -115,10 +119,6 @@ unicode_FromCstruct(unistr_t *unistr)
 {
     Py_UNICODE *str;
     PyObject *ret;
-#ifndef Py_UNICODE_WIDE
-    size_t i, j;
-    Py_UNICODE hi, lo;
-#endif /* Py_UNICODE_WIDE */
 
     if (unistr->str == NULL || unistr->len == 0) {
 	Py_UNICODE buf[1] = { (Py_UNICODE)0 };
@@ -126,24 +126,7 @@ unicode_FromCstruct(unistr_t *unistr)
     }
 
 #ifndef Py_UNICODE_WIDE
-    for (i = 0, j = unistr->len; i < unistr->len; i++)
-	if (0x10000 <= unistr->str[i])
-	    j++;
-    if ((str = malloc(sizeof(Py_UNICODE) * j)) == NULL) {
-	PyErr_SetFromErrno(PyExc_RuntimeError);
-        return NULL;
-    }
-    for (i = 0, j = 0; i < unistr->len; i++, j++)
-	if (0x10000 <= unistr->str[i]) {
-	    hi = ((unistr->str[i] - 0x10000) >> 10) & 0x3FF + 0xD800;
-	    lo = unistr->str[i] & 0x3FF + 0xDC00;
-	    str[j] = hi;
-	    str[j + 1] = lo;
-            j++;
-        } else
-            str[j] = (Py_UNICODE)unistr->str[i];
-    ret = PyUnicode_FromUnicode(str, j);
-    free(str);
+#   error "Not yet implemented."
 #else /* Py_UNICODE_WIDE */
     if ((str = malloc(sizeof(Py_UNICODE) * (unistr->len + 1))) == NULL) {
 	PyErr_SetFromErrno(PyExc_RuntimeError);
@@ -252,6 +235,55 @@ genericstr_ToCstruct(PyObject * pyobj, linebreak_t *lbobj)
     return gcstr;
 }
 
+/**
+ * Convert Python object, Unicode string or GCStrObject to 
+ * NULL-termineted UTF-8 string.
+ * If error occurred, exception will be raised and NULL will be returned.
+ * @note string buffer must be free()'ed by caller.
+ */
+
+static char *
+genericstr_ToString(PyObject *pyobj)
+{
+    PyObject *pystr;
+    char *ret;
+
+    if (pyobj == NULL)
+	return NULL;
+    else if (PyBytes_Check(pyobj)) {
+	if ((ret = strdup(PyBytes_AsString(pyobj))) == NULL) {
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+	    return NULL;
+	}
+    } else if (PyUnicode_Check(pyobj)) {
+	if ((pystr = PyUnicode_AsUTF8String(pyobj)) == NULL)
+	    return NULL;
+	if ((ret = strdup(PyBytes_AsString(pystr))) == NULL) {
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+
+	    Py_DECREF(pystr);
+	    return NULL;
+	}
+	Py_DECREF(pystr);
+    } else {
+	if ((pyobj = PyObject_Unicode(pyobj)) == NULL)
+	    return NULL;
+	if ((pystr = PyUnicode_AsUTF8String(pyobj)) == NULL) {
+	    Py_DECREF(pyobj);
+	    return NULL;
+	}
+	Py_DECREF(pyobj);
+	if ((ret = strdup(PyBytes_AsString(pystr))) == NULL) {
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+
+	    Py_DECREF(pystr);
+	    return NULL;
+	}
+	Py_DECREF(pystr);
+    }    
+    return ret;
+}
+
 /***
  *** Other utilities
  ***/
@@ -266,15 +298,7 @@ do_re_search_once(PyObject *rx, unistr_t *str, unistr_t *text)
     Py_ssize_t pos, endpos, start, end;
 
 #ifndef Py_UNICODE_WIDE
-    unichar_t *p;
-    pos = str->str - text->str;
-    for (p = text->str; p < str->str; p++)
-	if ((unichar_t)0x10000UL <= *p)
-	    pos++;
-    endpos = pos + str->len;
-    for ( ; p < str->str + str->len; p++)
-	if ((unichar_t)0x10000UL <= *p)
-	    endpos++;
+#   error "Not yet implemented."
 #else /* Py_UNICODE_WIDE */
     pos = str->str - text->str;
     endpos = pos + str->len;
@@ -284,7 +308,19 @@ do_re_search_once(PyObject *rx, unistr_t *str, unistr_t *text)
 	str->str = NULL;
 	return;
     }
-    func_search = PyObject_GetAttrString(rx, "search");
+    if ((func_search = PyObject_GetAttrString(rx, "search")) == NULL) {
+	Py_DECREF(strobj);
+	str->str = NULL;
+	return;
+    }
+    if (! PyCallable_Check(func_search)) {
+	PyErr_SetString(PyExc_ValueError, "object is not callable");
+
+	Py_DECREF(strobj);
+	Py_DECREF(func_search);
+	str->str = NULL;
+	return;
+    }
     args = PyTuple_New(3);
     PyTuple_SetItem(args, 0, strobj);
     PyTuple_SetItem(args, 1, PyInt_FromSsize_t(pos));
@@ -299,6 +335,7 @@ do_re_search_once(PyObject *rx, unistr_t *str, unistr_t *text)
 
     if (matchobj != Py_None) {
 	if ((pyobj = PyObject_CallMethod(matchobj, "start", NULL)) == NULL) {
+	    Py_DECREF(matchobj);
 	    str->str = NULL;
 	    return;
 	}
@@ -306,6 +343,7 @@ do_re_search_once(PyObject *rx, unistr_t *str, unistr_t *text)
 	Py_DECREF(pyobj);
 
 	if ((pyobj = PyObject_CallMethod(matchobj, "end", NULL)) == NULL) {
+	    Py_DECREF(matchobj);
 	    str->str = NULL;
 	    return;
 	}
@@ -317,7 +355,7 @@ do_re_search_once(PyObject *rx, unistr_t *str, unistr_t *text)
 #else /* Py_UNICODE_WIDE */
 	str->str = text->str + start;
 	str->len = end - start;
-#endif
+#endif /* Py_UNICODE_WIDE */
     } else
 	str->str = NULL;
     Py_DECREF(matchobj);
@@ -383,7 +421,6 @@ prep_func(linebreak_t *lbobj, void *data, unistr_t *str, unistr_t *text)
 	    lbobj->errnum = LINEBREAK_EEXTN;
 	return NULL;
     } 
-
     if (pyret == NULL)
 	return NULL;
 
@@ -408,22 +445,27 @@ prep_func(linebreak_t *lbobj, void *data, unistr_t *str, unistr_t *text)
 		return NULL;
 	    }
 
-            for (j = 0; j < gcstr->gclen; j++) {
-                if (gcstr->gcstr[j].flag &
-                    (LINEBREAK_FLAG_ALLOW_BEFORE |
-                     LINEBREAK_FLAG_PROHIBIT_BEFORE))
-                    continue;
-                if (i < count - 1 && j == 0)
-                    gcstr->gcstr[j].flag |= LINEBREAK_FLAG_ALLOW_BEFORE;
-                else if (0 < j)
-                    gcstr->gcstr[j].flag |= LINEBREAK_FLAG_PROHIBIT_BEFORE;
-            }
+	    for (j = 0; j < gcstr->gclen; j++) {
+		if (gcstr->gcstr[j].flag &
+		    (LINEBREAK_FLAG_ALLOW_BEFORE |
+		     LINEBREAK_FLAG_PROHIBIT_BEFORE))
+		    continue;
+		if (0 < i && j == 0)
+		    gcstr->gcstr[j].flag |= LINEBREAK_FLAG_ALLOW_BEFORE;
+		else if (0 < j)
+		    gcstr->gcstr[j].flag |= LINEBREAK_FLAG_PROHIBIT_BEFORE;
+	    }
 
 	    gcstring_append(ret, gcstr);
 	    gcstring_destroy(gcstr);
 	}
 	Py_DECREF(pyret);
 	return ret;
+    }
+
+    if (pyret == Py_None) {
+	Py_DECREF(pyret);
+	return NULL;
     }
 
     if (GCStr_Check(pyret))
@@ -459,7 +501,7 @@ static char *linebreak_states[] = {
 static gcstring_t *
 format_func(linebreak_t *lbobj, linebreak_state_t action, gcstring_t *str)
 {
-    PyObject *func, *args, *pyobj;
+    PyObject *func, *args, *pyret;
     char *actionstr;
     gcstring_t *gcstr;
 
@@ -476,31 +518,35 @@ format_func(linebreak_t *lbobj, linebreak_state_t action, gcstring_t *str)
     PyTuple_SetItem(args, 0, LineBreak_FromCstruct(lbobj));
     PyTuple_SetItem(args, 1, PyString_FromString(actionstr));
     PyTuple_SetItem(args, 2, GCStr_FromCstruct(gcstring_copy(str)));
-    pyobj = PyObject_CallObject(func, args);
+    pyret = PyObject_CallObject(func, args);
     Py_DECREF(args);
 
     if (PyErr_Occurred()) {
 	if (! lbobj->errnum)
 	    lbobj->errnum = LINEBREAK_EEXTN;
-	if (pyobj != NULL) {
-	    Py_DECREF(pyobj);
+	if (pyret != NULL) {
+	    Py_DECREF(pyret);
 	}
 	return NULL;
     }
-    if (pyobj == NULL)
+    if (pyret == NULL)
 	return NULL;
-    if (pyobj == Py_None)
-	gcstr = NULL;
-    else if ((gcstr = genericstr_ToCstruct(pyobj, lbobj)) == NULL) {
+
+    if (pyret == Py_None) {
+	Py_DECREF(pyret);
+	return NULL;
+    }
+
+    if (GCStr_Check(pyret))
+	gcstr = gcstring_copy(GCStr_AS_CSTRUCT(pyret));
+    else if ((gcstr = genericstr_ToCstruct(pyret, lbobj)) == NULL) {
 	if (! lbobj->errnum)
 	    lbobj->errnum = errno ? errno : ENOMEM;
 	PyErr_SetFromErrno(PyExc_RuntimeError);
-	Py_DECREF(pyobj);
+	Py_DECREF(pyret);
 	return NULL;
     }
-    if (GCStr_Check(pyobj))
-	GCStr_AS_CSTRUCT(pyobj) = NULL; /* prevent destruction */
-    Py_DECREF(pyobj);
+    Py_DECREF(pyret);
     return gcstr;
 }
 
@@ -511,7 +557,7 @@ static double
 sizing_func(linebreak_t *lbobj, double len,
 	    gcstring_t *pre, gcstring_t *spc, gcstring_t *str)
 {
-    PyObject *func, *args, *pyobj;
+    PyObject *func, *args, *pyret;
     double ret;
 
     func = (PyObject *)lbobj->sizing_data;
@@ -525,26 +571,26 @@ sizing_func(linebreak_t *lbobj, double len,
     PyTuple_SetItem(args, 2, GCStr_FromCstruct(gcstring_copy(pre)));
     PyTuple_SetItem(args, 3, GCStr_FromCstruct(gcstring_copy(spc)));
     PyTuple_SetItem(args, 4, GCStr_FromCstruct(gcstring_copy(str)));
-    pyobj = PyObject_CallObject(func, args);
+    pyret = PyObject_CallObject(func, args);
     Py_DECREF(args);
 
     if (PyErr_Occurred()) {
 	if (! lbobj->errnum)
 	    lbobj->errnum = LINEBREAK_EEXTN;
-	if (pyobj != NULL) {
-	    Py_DECREF(pyobj);
+	if (pyret != NULL) {
+	    Py_DECREF(pyret);
 	}
 	return -1.0;
     }
 
-    ret = PyFloat_AsDouble(pyobj);
+    ret = PyFloat_AsDouble(pyret);
     if (PyErr_Occurred()) {
 	if (! lbobj->errnum)
 	    lbobj->errnum = LINEBREAK_EEXTN;
-	Py_DECREF(pyobj);
+	Py_DECREF(pyret);
 	return -1.0;
     }
-    Py_DECREF(pyobj);
+    Py_DECREF(pyret);
 
     return ret;
 }
@@ -578,11 +624,14 @@ urgent_func(linebreak_t *lbobj, gcstring_t *str)
 	}
 	return NULL;
     }
+    if (pyret == NULL)
+	return NULL;
 
     if (pyret == Py_None) {
 	Py_DECREF(pyret);
 	return NULL;
     }
+
     if (! PyList_Check(pyret)) {
 	if (GCStr_Check(pyret))
 	    ret = gcstring_copy(GCStr_AS_CSTRUCT(pyret));
@@ -642,7 +691,7 @@ static void
 LineBreak_dealloc(LineBreakObject *self)
 {
     linebreak_destroy(self->obj);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
@@ -688,19 +737,22 @@ LineBreak_init(LineBreakObject *self, PyObject *args, PyObject *kwds)
 
     pos = 0;
     while (PyDict_Next(kwds, &pos, &key, &value)) {
-	keystr = PyString_AsString(key);
+	if ((keystr = genericstr_ToString(key)) == NULL)
+	    return -1;
 	for (getset = LineBreak_getseters; getset->name != NULL; getset++) {
 	    if (getset->set == NULL)
 		continue;
 	    if (strcmp(getset->name, keystr) != 0)
 		continue;
-	    if ((getset->set)((PyObject *)self, value, NULL) != 0)
+	    if ((getset->set)((PyObject *)self, value, NULL) != 0) {
+		free(keystr);
 		return -1;
+	    }
 	    break;
 	}
+	free(keystr);
 	if (getset->name == NULL) {
-	    PyErr_SetString(PyExc_ValueError,
-			    "invalid argument");
+	    PyErr_SetString(PyExc_ValueError, "invalid argument");
 	    return -1;
 	}
     }
@@ -821,12 +873,7 @@ _get_Boolean(legacy_cm, LINEBREAK_OPTION_LEGACY_CM)
 static PyObject *
 LineBreak_get_newline(PyObject *self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
-    unistr_t unistr;
-
-    unistr.str = lbobj->newline.str;
-    unistr.len = lbobj->newline.len;
-    return unicode_FromCstruct(&unistr);
+    return unicode_FromCstruct(&(LineBreak_AS_CSTRUCT(self)->newline));
 }
 
 static PyObject *
@@ -969,7 +1016,7 @@ _update_maps(linebreak_t *lbobj, PyObject *dict, int maptype)
 	    for (i = 0; (item = PySequence_GetItem(key, i)) != NULL; i++) {
 		if (PyUnicode_Check(item) && 0 < PyUnicode_GET_SIZE(item)) {
 #ifndef Py_UNICODE_WIDE
-		    #error "Not yet implemented"
+#   error "Not yet implemented"
 #else /* Py_UNICODE_WIDE */
 		    c = *PyUnicode_AS_UNICODE(item);
 #endif /* Py_UNICODE_WIDE */
@@ -1133,19 +1180,23 @@ LineBreak_set_format(PyObject *self, PyObject *value, void *closure)
 	linebreak_set_format(lbobj, NULL, NULL);
     else if (PyString_Check(value) || PyUnicode_Check(value)) {
 	char *str;
-	str = PyString_AsString(value);
+	if ((str = genericstr_ToString(value)) == NULL)
+	    return -1;
 
-	if (strcmp(str, "SIMPLE") == 0)
+	if (strcasecmp(str, "SIMPLE") == 0)
 	    linebreak_set_format(lbobj, linebreak_format_SIMPLE, NULL);
-	else if (strcmp(str, "NEWLINE") == 0)
+	else if (strcasecmp(str, "NEWLINE") == 0)
 	    linebreak_set_format(lbobj, linebreak_format_NEWLINE, NULL);
-	else if (strcmp(str, "TRIM") == 0)
+	else if (strcasecmp(str, "TRIM") == 0)
 	    linebreak_set_format(lbobj, linebreak_format_TRIM, NULL);
 	else {
 	    PyErr_Format(PyExc_ValueError,
 			 "unknown attribute value, %200s", str);
+
+	    free(str);
 	    return -1;
 	}
+	free(str);
     } else if (PyFunction_Check(value))
 	linebreak_set_format(lbobj, format_func, (void *)value);
     else {
@@ -1210,9 +1261,8 @@ LineBreak_set_prep(PyObject *self, PyObject *value, void *closure)
 	for (i = 0; i < len; i++) {
 	    item = PyList_GetItem(value, i);
 	    if (PyString_Check(item) || PyUnicode_Check(item)) {
-		str = PyString_AsString(item);
-		if (PyErr_Occurred())
-		    ;
+		if ((str = genericstr_ToString(item)) == NULL)
+		    break;
 		else if (strcasecmp(str, "BREAKURI") == 0)
 		    linebreak_add_prep(lbobj, linebreak_prep_URIBREAK,
 				       Py_True);
@@ -1222,8 +1272,11 @@ LineBreak_set_prep(PyObject *self, PyObject *value, void *closure)
 		else {
 		    PyErr_Format(PyExc_ValueError,
 				 "unknown attribute value %200s", str);
+
+		    free(str);
 		    return -1;
 		}
+		free(str);
 	    } else if (PyTuple_Check(item)) {
 		PyObject *re_module, *patt, *func_compile, *args;
 
@@ -1234,7 +1287,7 @@ LineBreak_set_prep(PyObject *self, PyObject *value, void *closure)
 		}
 
 		patt = PyTuple_GetItem(item, 0);
-		if (PyString_Check(patt)) {
+		if (PyString_Check(patt) || PyUnicode_Check(patt)) {
 		    re_module = PyImport_ImportModule("re");
 		    func_compile = PyObject_GetAttrString(re_module,
 							  "compile");
@@ -1273,16 +1326,20 @@ LineBreak_set_sizing(PyObject *self, PyObject *value, void *closure)
 	linebreak_set_sizing(lbobj, NULL, NULL);
     else if (PyString_Check(value) || PyUnicode_Check(value)) {
         char *str;
-	str = PyString_AsString(value);
+	if ((str = genericstr_ToString(value)) == NULL)
+	    return -1;
 
-	if (strcmp(str, "UAX11") == 0)
+	if (strcasecmp(str, "UAX11") == 0)
 	    linebreak_set_sizing(lbobj, linebreak_sizing_UAX11, NULL);
 	else {
 	    PyErr_Format(PyExc_ValueError,
 			 "unknown attribute value %200s",
 			 str);
+
+	    free(str);
 	    return -1;
 	}
+	free(str);
     } else if (PyFunction_Check(value))
         linebreak_set_sizing(lbobj, sizing_func, (void *)value);
     else {
@@ -1306,17 +1363,21 @@ LineBreak_set_urgent(PyObject *self, PyObject *value, void *closure)
     else if (PyString_Check(value) || PyUnicode_Check(value)) {
         char *str;
 
-	str = PyString_AsString(value);
-	if (strcmp(str, "FORCE") == 0)
+	if ((str = genericstr_ToString(value)) == NULL)
+	    return -1;
+	else if (strcasecmp(str, "FORCE") == 0)
 	    linebreak_set_urgent(lbobj, linebreak_urgent_FORCE, NULL);
-	else if (strcmp(str, "RAISE") == 0)
+	else if (strcasecmp(str, "RAISE") == 0)
 	    linebreak_set_urgent(lbobj, linebreak_urgent_ABORT, NULL);
 	else {
 	    PyErr_Format(PyExc_ValueError,
 			 "unknown attribute value %200s",
 			 str);
+
+	    free(str);
 	    return -1;
 	}
+	free(str);
     } else if (PyFunction_Check(value))
         linebreak_set_urgent(lbobj, urgent_func, (void *)value);
     else {
@@ -1602,8 +1663,12 @@ static PyMethodDef LineBreak_methods[] = {
 
 
 static PyTypeObject LineBreakType = {
+#if PY_MAJOR_VERSION >= 3
+    PyVarObject_HEAD_INIT(NULL, 0)
+#else /* PY_MAJOR_VERSION */
     PyObject_HEAD_INIT(NULL)
     0,                         /*ob_size*/
+#endif /* PY_MAJOR_VERSION */
     "_textseg.LineBreak",      /*tp_name*/
     sizeof(LineBreakObject),   /*tp_basicsize*/
     0,                         /*tp_itemsize*/
@@ -1656,7 +1721,7 @@ static void
 GCStr_dealloc(GCStrObject *self)
 {
     gcstring_destroy(self->obj);
-    Py_TYPE(self)->tp_free((PyObject*)self);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
@@ -1702,7 +1767,19 @@ GCStr_init(GCStrObject *self, PyObject *args, PyObject *kwds)
 static PyObject *
 GCStr_get_chars(PyObject *self)
 {
+#ifndef Py_UNICODE_WIDE
+    gcstring_t *gcstr = GCStr_AS_CSTRUCT(self);
+    size_t i, chars;
+
+    if (gcstr->str == NULL)
+	return PyInt_FromSsize_t(0);
+    for (i = 0, chars = 0; i < gcstr->len; i++, chars++)
+	if (0x10000 <= gcstr->str[i])
+	    chars++;
+    return PyInt_FromSsize_t(chars);
+#else /* Py_UNICODE_WIDE */
     return PyInt_FromSsize_t(GCStr_AS_CSTRUCT(self)->len);
+#endif /* Py_UNICODE_WIDE */
 }
 
 static PyObject *
@@ -1765,6 +1842,14 @@ static PyGetSetDef GCStr_getseters[] = {
  * String methods
  */
 
+#if PY_MAJOR_VERSION >= 3
+static PyObject *
+GCStr_Str(PyObject *self)
+{
+    return unicode_FromCstruct((unistr_t *)(GCStr_AS_CSTRUCT(self)));
+}
+#endif
+
 static PyObject *
 GCStr_compare(PyObject *a, PyObject *b, int op)
 {
@@ -1779,9 +1864,9 @@ GCStr_compare(PyObject *a, PyObject *b, int op)
     else
 	lbobj = NULL;
 
-    if ((astr = genericstr_ToCstruct(a, NULL)) == NULL ||
-	(bstr = genericstr_ToCstruct(b, NULL)) == NULL) {
-	if (! GCStr_Check(a))
+    if ((astr = genericstr_ToCstruct(a, lbobj)) == NULL ||
+	(bstr = genericstr_ToCstruct(b, lbobj)) == NULL) {
+	if (a != NULL && ! GCStr_Check(a))
 	    gcstring_destroy(astr);
 	return NULL;
     }
@@ -1900,14 +1985,21 @@ GCStr_item(PyObject *self, Py_ssize_t i)
 }
 
 static PyObject *
-GCStr_slice(PyObject *self, Py_ssize_t i, Py_ssize_t j)
+GCStr_slice(PyObject *self, Py_ssize_t start, Py_ssize_t end)
 {
     gcstring_t *gcstr;
 
-    j -= i;
-    if (j < 0)
-	j = 0;
-    if ((gcstr = gcstring_substr(GCStr_AS_CSTRUCT(self), i, j))
+    /* standard clamping */
+    if (start < 0)
+	start = 0;
+    if (end < 0)
+	end = 0;
+    if (GCStr_AS_CSTRUCT(self)->gclen < end)
+	end = GCStr_AS_CSTRUCT(self)->gclen;
+    if (end < start)
+	start = end;
+    /* copy slice */
+    if ((gcstr = gcstring_substr(GCStr_AS_CSTRUCT(self), start, end - start))
 	== NULL) {
 	PyErr_SetFromErrno(PyExc_RuntimeError);
 	return NULL;
@@ -1948,7 +2040,7 @@ GCStr_ass_item(PyObject *self, Py_ssize_t i, PyObject *v)
 }
 
 static int
-GCStr_ass_slice(PyObject *self, Py_ssize_t i, Py_ssize_t j, PyObject *v)
+GCStr_ass_slice(PyObject *self, Py_ssize_t start, Py_ssize_t end, PyObject *v)
 {
     gcstring_t *gcstr, *repl;
     linebreak_t *lbobj = GCStr_AS_CSTRUCT(self)->lbobj;
@@ -1958,12 +2050,19 @@ GCStr_ass_slice(PyObject *self, Py_ssize_t i, Py_ssize_t j, PyObject *v)
     else if ((repl = genericstr_ToCstruct(v, lbobj)) == NULL)
 	return -1;
 
-    j -= i;
-    if (j < 0)
-        j = 0;
-    if ((gcstr = gcstring_replace(GCStr_AS_CSTRUCT(self), i, j, repl))
-	== NULL) {
-        PyErr_SetFromErrno(PyExc_RuntimeError);
+    /* standard clamping */
+    if (start < 0)
+	start = 0;
+    if (end < 0)
+	end = 0;
+    if (GCStr_AS_CSTRUCT(self)->gclen < end)
+	end = GCStr_AS_CSTRUCT(self)->gclen;
+    if (end < start)
+	start = end;
+
+    if ((gcstr = gcstring_replace(GCStr_AS_CSTRUCT(self), start, end - start,
+				  repl)) == NULL) {
+	PyErr_SetFromErrno(PyExc_RuntimeError);
 
 	if (v == NULL || ! GCStr_Check(v))
 	    gcstring_destroy(repl);
@@ -1976,36 +2075,134 @@ GCStr_ass_slice(PyObject *self, Py_ssize_t i, Py_ssize_t j, PyObject *v)
 }
 
 static PyObject *
-GCStr_subscript(PyObject *self, PyObject *key)
+GCStr_subscript(PyObject *self, PyObject *item)
 {
     Py_ssize_t k;
+    gcstring_t *gcstr = GCStr_AS_CSTRUCT(self);
 
-    if (PyInt_Check(key))
-	k = PyInt_AsLong(key);
-    else if (PyLong_Check(key))
-        k = PyInt_AsLong(key);
-    else {
-	PyErr_SetString(PyExc_TypeError,
-		     "GCStr indices must be integers");
-	return NULL;
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION <= 4
+    if (PyInt_Check(item))
+        k = PyInt_AsSsize_t(item);
+    else if (PyLong_Check(item))
+        k = PyLong_AsSsize_t(item);
+#else /* PY_MAJOR_VERSION == 2 && ... */
+    if (PyIndex_Check(item) || PyNumber_Check(item))
+	k = PyNumber_AsSsize_t(item, PyExc_IndexError);
+#endif /* PY_MAJOR_VERSION == 2 && ... */
+    else if (PySlice_Check(item)) {
+	Py_ssize_t start, stop, step, len, cur, i;
+	gcstring_t *result;
+
+#if PY_MAJOR_VERSION == 2 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION <= 1)
+	if (PySlice_GetIndicesEx((PySliceObject *)item, gcstr->gclen,
+				 &start, &stop, &step, &len) < 0)
+	    return NULL;
+#else /* PY_MAJOR_VERSION ... */
+	if (PySlice_GetIndicesEx((PyObject *)item, gcstr->gclen,
+				 &start, &stop, &step, &len) < 0)
+	    return NULL;
+#endif /* PY_MAJOR_VERSION ... */
+
+	if (len <= 0)
+	    return GCStr_FromCstruct(gcstring_new(NULL, gcstr->lbobj));
+	else if (step == 1)
+	    return GCStr_FromCstruct(gcstring_substr(gcstr, start, len));
+	if ((result = gcstring_new(NULL, gcstr->lbobj)) == NULL) {
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+	    return NULL;
+	}
+	for (cur = start, i = 0; i < len; cur += step, i++)
+	    if (gcstring_append(result, gcstring_substr(gcstr, cur, 1))
+		== NULL) {
+		PyErr_SetFromErrno(PyExc_RuntimeError);
+		gcstring_destroy(result);
+		return NULL;
+	    }
+	return GCStr_FromCstruct(result);
+    } else {
+        PyErr_SetString(PyExc_TypeError, "GCStr indices must be integers");
+        return NULL;
     }
+
+    if (k == -1 && PyErr_Occurred())
+	return NULL;
+    if (k < 0)
+	k += gcstr->gclen;
     return GCStr_item(self, k);
 }
 
 static int
-GCStr_ass_subscript(PyObject *self, PyObject *key, PyObject *v)
+GCStr_ass_subscript(PyObject *self, PyObject *item, PyObject *v)
 {
     Py_ssize_t k;
+    gcstring_t *gcstr = GCStr_AS_CSTRUCT(self);
 
-    if (PyInt_Check(key))
-        k = PyInt_AsLong(key);
-    else if (PyLong_Check(key))
-        k = PyInt_AsLong(key);
-    else {
-        PyErr_SetString(PyExc_TypeError,
-			"GCStr indices must be integers");
+#if PY_MAJOR_VERSION == 2 && PY_MINOR_VERSION <= 4
+    if (PyInt_Check(item))
+	k = PyInt_AsSsize_t(item);
+    else if (PyLong_Check(item))
+	k = PyLong_AsSsize_t(item);
+#else /* PY_MAJOR_VERSION == 2 && ... */
+    if (PyIndex_Check(item) || PyNumber_Check(item))
+	k = PyNumber_AsSsize_t(item, PyExc_IndexError);
+#endif /* PY_MAJOR_VERSION == 2 && ... */
+    else if (PySlice_Check(item)) {
+	Py_ssize_t start, stop, step, len;
+	gcstring_t *repl;
+
+#if PY_MAJOR_VERSION == 2 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION <= 1)
+	if (PySlice_GetIndicesEx((PySliceObject *)item, gcstr->gclen,
+				 &start, &stop, &step, &len) < 0)
+	    return -1;
+#else /* PY_MAJOR_VERSION ... */
+	if (PySlice_GetIndicesEx((PyObject *)item, gcstr->gclen,
+				 &start, &stop, &step, &len) < 0)
+	    return -1;
+#endif /* PY_MAJOR_VERSION ... */
+
+	if (step != 1) {
+	    PyErr_SetNone(PyExc_NotImplementedError);
+	    return -1;
+	}
+	if (len < 0)
+	    return 0;
+
+	if (v == NULL) {
+	    if ((repl = gcstring_new(NULL, gcstr->lbobj)) == NULL) {
+		PyErr_SetFromErrno(PyExc_RuntimeError);
+		return -1;
+	    }
+	    if (gcstring_replace(gcstr, start, len, repl) == NULL) {
+		PyErr_SetFromErrno(PyExc_RuntimeError);
+
+		gcstring_destroy(repl);
+		return -1;
+	    }
+	    gcstring_destroy(repl);
+	    return 0;
+	}
+
+	if ((repl = genericstr_ToCstruct(v, gcstr->lbobj)) == NULL)
+	    return -1;
+	if (gcstring_replace(gcstr, start, len, repl) == NULL) {
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+
+	    if (! GCStr_Check(v))
+		gcstring_destroy(repl);
+	    return -1;
+	}
+	if (! GCStr_Check(v))
+	    gcstring_destroy(repl);
+	return 0;
+    } else {
+        PyErr_SetString(PyExc_TypeError, "GCStr indices must be integers");
         return -1;
     }
+
+    if (k == -1 && PyErr_Occurred())
+	return -1;
+    if (k < 0)
+	k += gcstr->gclen;
     return GCStr_ass_item(self, k, v);
 }
 
@@ -2109,8 +2306,12 @@ static PyMethodDef GCStr_methods[] = {
 
 
 static PyTypeObject GCStrType = {
+#if PY_MAJOR_VERSION >= 3
+    PyVarObject_HEAD_INIT(NULL, 0)
+#else /* PY_MAJOR_VERSION */
     PyObject_HEAD_INIT(NULL)
     0,                         /*ob_size*/
+#endif /* PY_MAJOR_VERSION */
     "_textseg.GCStr",          /*tp_name*/
     sizeof(GCStrObject),       /*tp_basicsize*/
     0,                         /*tp_itemsize*/
@@ -2125,7 +2326,11 @@ static PyTypeObject GCStrType = {
     &GCStr_as_mapping,         /*tp_as_mapping*/
     0,                         /*tp_hash */
     0,                         /*tp_call*/
+#if PY_MAJOR_VERSION >= 3
+    &GCStr_Str,                /*tp_str*/
+#else /* PY_MAJOR_VERSION */
     0,                         /*tp_str*/
+#endif /* PY_MAJOR_VERSION */
     0,                         /*tp_getattro*/
     0,                         /*tp_setattro*/
     0,                         /*tp_as_buffer*/
@@ -2152,102 +2357,76 @@ static PyTypeObject GCStrType = {
 
 
 /**
- ** Module definitions
- **/
+ * Initialize module
+ */
 
 static PyMethodDef module_methods[] = {
     { NULL } /* Sentinel */
 };
 
-/*
- * Initialize class properties
- */
+PyDoc_STRVAR(module__doc__,
+"\
+Module for text segmentation.");
 
-static int
-LineBreak_dict_init()
-{
-    PyObject *dict;
-    size_t i;
-    char name[8];
+#if PY_MAJOR_VERSION >= 3
 
-    if ((dict = PyDict_New()) == NULL)
-	return -1;
-
-    /* add "lbc??" */
-    strcpy(name, "lbc");
-    for (i = 0; linebreak_propvals_LB[i] != NULL; i++) {
-	strcpy(name + 3, linebreak_propvals_LB[i]);
-	if ((PyDict_SetItemString(dict, name, PyInt_FromLong((long)i))) != 0) {
-	    Py_DECREF(dict);
-	    return -1;
-	}
-    }
-    /* add "eaw??" */
-    strcpy(name, "eaw");
-    for (i = 0; linebreak_propvals_EA[i] != NULL; i++) {
-        strcpy(name + 3, linebreak_propvals_EA[i]);
-        if ((PyDict_SetItemString(dict, name, PyInt_FromLong((long)i))) != 0) {
-	    Py_DECREF(dict);
-	    return -1;
-	}
-    }
-
-    LineBreakType.tp_dict = dict;
-    return 0;
-}
-
-/*
- * Initialize classes
- */
-
-#ifndef PyMODINIT_FUNC	/* declarations for DLL import/export */
-#define PyMODINIT_FUNC void
-#endif
+static struct PyModuleDef textseg_def = {
+    PyModuleDef_HEAD_INIT,
+    "_textseg",
+    module__doc__,
+    -1,
+    module_methods,
+    NULL, NULL, NULL, NULL
+};
+#define INITERROR return NULL
 PyMODINIT_FUNC
+PyInit__textseg(void)
+
+#else /* PY_MAJOR_VERSION */
+
+#define INITERROR return
+void
 init_textseg(void) 
+
+#endif /* PY_MAJOR_VERSION */
+
 {
-    PyObject *m, *c;
-    size_t i;
-    char name[8];
+    PyObject *m;
 
-    if (LineBreak_dict_init() != 0)
-	return;
-    if (PyType_Ready(&LineBreakType) < 0)
-        return;
-    if (PyType_Ready(&GCStrType) < 0)
-        return;
+    if ((LineBreakException = PyErr_NewException("_textseg.Error", NULL, NULL))
+	== NULL)
+	INITERROR;
+    if (PyType_Ready(&LineBreakType) < 0) {
+	Py_DECREF(LineBreakException);
+	Py_DECREF(LineBreakType.tp_dict);
+        INITERROR;
+    }
+    if (PyType_Ready(&GCStrType) < 0) {
+	Py_DECREF(LineBreakException);
+	Py_DECREF(LineBreakType.tp_dict);
+        INITERROR;
+    }
 
-    if ((m = Py_InitModule3("_textseg", module_methods,
-                            "Module for text segmentation.")) == NULL)
-        return;
+#if PY_MAJOR_VERSION >= 3
+    m = PyModule_Create(&textseg_def);
+#else /* PY_MAJOR_VERSION */
+    m = Py_InitModule3("_textseg", module_methods, module__doc__);
+#endif /* PY_MAJOR_VERSION */
+    if (m == NULL) {
+	Py_DECREF(LineBreakException);
+	Py_DECREF(LineBreakType.tp_dict);
+	INITERROR;
+    }
 
-    LineBreakException = PyErr_NewException("_textseg.Exception", NULL, NULL);
     Py_INCREF(LineBreakException);
-
+    PyModule_AddObject(m, "Error", LineBreakException);
     Py_INCREF(&LineBreakType);
     PyModule_AddObject(m, "LineBreak", (PyObject *)&LineBreakType);
     Py_INCREF(&GCStrType);
     PyModule_AddObject(m, "GCStr", (PyObject *)&GCStrType);
 
-    /* add module constants */
-
-    if ((c = Py_InitModule("_textseg.Consts", module_methods)) == NULL)
-	return;
-
-    PyModule_AddStringConstant(c, "unicode_version",
-			       (char *)linebreak_unicode_version);
-    PyModule_AddStringConstant(c, "sombok_version", SOMBOK_VERSION);
-    strcpy(name, "lbc");
-    for (i = 0; linebreak_propvals_LB[i] != NULL; i++) {
-        strcpy(name + 3, linebreak_propvals_LB[i]);
-        PyModule_AddIntConstant(c, name, (long)i);
-    }
-    strcpy(name, "eaw");
-    for (i = 0; linebreak_propvals_EA[i] != NULL; i++) {
-        strcpy(name + 3, linebreak_propvals_EA[i]);
-        PyModule_AddIntConstant(c, name, (long)i);
-    }
-    Py_INCREF(c);
-    PyModule_AddObject(m, "Consts", c);
+#if PY_MAJOR_VERSION >= 3
+    return m;
+#endif /* PY_MAJOR_VERSION */
 }
 

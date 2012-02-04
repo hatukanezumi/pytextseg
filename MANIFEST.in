@@ -1,5 +1,6 @@
 include MANIFEST.in COPYING CHANGES INSTALL README
-include textseg.c
-recursive-include textseg *.py
-recursive-include tests *.py
+include textseg*.c
+include textseg/*.py
+include tests/*.py
+include test-data/*
 

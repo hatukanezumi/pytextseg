@@ -25,9 +25,9 @@ __all__ = ['LineBreak', 'GCStr', 'wrap', 'fill']
 import _textseg
 
 try:
-    True, False
+    unicode
 except NameError:
-    (True, False) = (8, 0)
+    unicode = str
 
 def wrap(text,
          expand_tabs=True,
@@ -52,15 +52,15 @@ default, tabs in 'text' are expanded and all other whitespace characters
         text = GCStr(text).expandtabs()
     if replace_whitespace:
         table = {}
-        for c in u'\t\n\x0b\x0c\r ':
-            table[c] = u' '
+        for c in unicode('\t\n\x0b\x0c\r '):
+            table[c] = unicode(' ')
         text = text.translate(table)
 
-    for k, v in { 'charmax': 0,
-                  'format': "NEWLINE",
-                  'newline': None,
-                  'urgent': (break_long_words and "FORCE" or None),
-                }.items():
+    for k, v in list({ 'charmax': 0,
+                       'format': "NEWLINE",
+                       'newline': None,
+                       'urgent': (break_long_words and "FORCE" or None),
+                     }.items()):
         if not k in kwds:
             kwds[k] = v
     lb = LineBreak(**kwds)
@@ -74,7 +74,7 @@ Reformat the single paragraph in 'text' to fit in lines of no more than
 'width' columns, and return a new string containing the entire wrapped 
 paragraph.'''
 
-    return u"\n".join(wrap(text, **kwds))
+    return unicode("\n").join(wrap(text, **kwds))
 
 """
 Line breaking
@@ -115,10 +115,10 @@ LineBreak([options...]) -> LineBreak
 
 Create new LineBreak object.  Optional named arguments may specify 
 initial property values.  See documentations of each properties.'''
-	for k, v in self.DEFAULTS.items():
-	    if not kwds.has_key(k):
-		kwds[k] = v
-	_textseg.LineBreak.__init__(self, **kwds)
+        for k, v in list(self.DEFAULTS.items()):
+            if k not in kwds:
+                kwds[k] = v
+        _textseg.LineBreak.__init__(self, **kwds)
 
 """
 Grapheme cluster string
@@ -171,10 +171,10 @@ If tabsize is not given, a tab size of 8 characters is assumed.'''
             if c.lbc in (lbcBK, lbcCR, lbcLF, lbcNL):
                 ret += c
                 j = 0
-            elif c == u'\t':
+            elif c == unicode('\t'):
                 if 0 < tabsize:
                     incr = tabsize - (j % tabsize)
-                    ret += u' ' * incr
+                    ret += unicode(' ') * incr
                     j += incr
             else:
                 ret += c
