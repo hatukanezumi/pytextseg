@@ -1,3 +1,5 @@
+# -*- python -*-
+# -*- coding: utf-8 -*-
 """Constants for textseg package
 
 eawNa, eawN, eawA, eawW, eawH, eawF, eawZ

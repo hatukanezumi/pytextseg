@@ -1,5 +1,10 @@
 Changes for pytextseg package
 
+* 0.0.2  2012-02-10
+	- Switched to CPython 3.3 style Unicode handling (PEP 393).
+	  Python 2.x including "narrow" Unicode implenentation is still 
+	  supported.
+
 * 0.0.1  2012-02-04
 	- "Wide" Unicode implementation only.
 	- Supported Python 3.x.

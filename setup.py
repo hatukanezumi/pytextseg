@@ -38,7 +38,7 @@ INSTALL_DOC_DIR = 'share/doc/pytextseg'
 if __name__ == '__main__':
     setup(
         name="pytextseg",
-        version='0.0.1',
+        version='0.0.2',
         license="GNU General Public License (GPL)",
         description='Python module for text segmentation.',
         long_description=open('README', 'r').read(),
@@ -67,7 +67,7 @@ if __name__ == '__main__':
 		'_textseg',
 		['textseg.c'],
 		libraries=['sombok', 'thai'],
-		include_dirs=['sombok/include'],
+		include_dirs=['.', 'sombok/include'],
 		library_dirs=['sombok/.libs'],
 	    ),
 	    Extension(

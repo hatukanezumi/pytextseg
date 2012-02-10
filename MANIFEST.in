@@ -1,4 +1,5 @@
 include MANIFEST.in COPYING CHANGES INSTALL README
+include python_compat.h
 include textseg*.c
 include textseg/*.py
 include tests/*.py
