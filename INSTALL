@@ -20,7 +20,7 @@ Install
 
 Get pytextseg from:
 
-  http://sourceforge.net/projects/linefold/files/pytextseg/
+  http://pypi.python.org/pypi/pytextseg/
 
 Extract tarball then run as below.
 

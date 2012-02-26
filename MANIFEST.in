@@ -3,5 +3,9 @@ include python_compat.h
 include textseg*.c
 include textseg/*.py
 include tests/*.py
-include test-data/*
+include test-data/*.in
+include test-data/*.out
+include test-data/*.bz
+include test-data/GraphemeBreakTest.txt
+include test-data/LineBreakTest.txt
 

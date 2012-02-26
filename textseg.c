@@ -22,21 +22,23 @@
  *** Objects
  ***/
 
-typedef struct LineBreakObject {
+typedef struct {
     PyObject_HEAD
     linebreak_t * obj;
 } LineBreakObject;
 
-typedef struct GCStrObject {
+typedef struct {
     PyObject_HEAD
     gcstring_t * obj;
 } GCStrObject;
 
-static PyTypeObject LineBreakType;
-static PyTypeObject GCStrType;
+static PyTypeObject LineBreak_Type;
+static PyTypeObject GCStr_Type;
 
-#define LineBreak_Check(op) PyObject_TypeCheck(op, &LineBreakType)
-#define GCStr_Check(op) PyObject_TypeCheck(op, &GCStrType)
+#define LineBreak_Check(op) PyObject_TypeCheck(op, &LineBreak_Type)
+#define LineBreak_CheckExact(op) (Py_TYPE(op) == &LineBreak_Type)
+#define GCStr_Check(op) PyObject_TypeCheck(op, &GCStr_Type)
+#define GCStr_CheckExact(op) (Py_TYPE(op) == &GCStr_Type)
 
 /***
  *** Data conversion.
@@ -271,17 +273,14 @@ LineBreak_AsCstruct(PyObject * pyobj)
  * Convert linebreak object to LineBreakObject.
  */
 static PyObject *
-LineBreak_FromCstruct(linebreak_t * obj)
+LineBreak_FromCstruct(PyTypeObject * type, linebreak_t * lb)
 {
-    LineBreakObject *self;
+    PyObject *self;
 
-    if ((self =
-	 (LineBreakObject *) (LineBreakType.tp_alloc(&LineBreakType, 0)))
-	== NULL)
+    if ((self = type->tp_alloc(type, 0)) == NULL)
 	return NULL;
-
-    self->obj = obj;
-    return (PyObject *) self;
+    LineBreak_AS_CSTRUCT(self) = lb;
+    return self;
 }
 
 /**
@@ -302,19 +301,17 @@ GCStr_AsCstruct(PyObject * pyobj)
 }
 
 /**
- * Convert grapheme cluster string to GCStrObject.
+ * Convert grapheme cluster string to GCStr object or its subtype.
  */
 static PyObject *
-GCStr_FromCstruct(gcstring_t * obj)
+GCStr_FromCstruct(PyTypeObject * type, gcstring_t * gcstr)
 {
-    GCStrObject *self;
+    PyObject *self;
 
-    if ((self =
-	 (GCStrObject *) (GCStrType.tp_alloc(&GCStrType, 0))) == NULL)
+    if ((self = type->tp_alloc(type, 0)) == NULL)
 	return NULL;
-
-    self->obj = obj;
-    return (PyObject *) self;
+    GCStr_AS_CSTRUCT(self) = gcstr;
+    return self;
 }
 
 /**
@@ -326,7 +323,7 @@ GCStr_FromCstruct(gcstring_t * obj)
  */
 
 static gcstring_t *
-genericstr_ToCstruct(PyObject * pyobj, linebreak_t * lbobj)
+genericstr_ToCstruct(PyObject * pyobj, linebreak_t * lb)
 {
     unistr_t unistr = { NULL, 0 };
     gcstring_t *gcstr;
@@ -337,7 +334,7 @@ genericstr_ToCstruct(PyObject * pyobj, linebreak_t * lbobj)
 	return GCStr_AS_CSTRUCT(pyobj);
     if (unicode_ToCstruct(&unistr, pyobj) == NULL)
 	return NULL;
-    if ((gcstr = gcstring_new(&unistr, lbobj)) == NULL) {
+    if ((gcstr = gcstring_new(&unistr, lb)) == NULL) {
 	PyErr_SetFromErrno(PyExc_RuntimeError);
 
 	free(unistr.str);
@@ -498,12 +495,12 @@ do_re_search_once(PyObject * rx, unistr_t * str, unistr_t * text)
  * Increment/decrement reference count
  */
 static void
-ref_func(PyObject * obj, int datatype, int d)
+ref_func(void * obj, int datatype, int d)
 {
     if (0 < d) {
-	Py_INCREF(obj);
+	Py_INCREF((PyObject *)obj);
     } else if (d < 0) {
-	Py_DECREF(obj);
+	Py_DECREF((PyObject *)obj);
     }
 }
 
@@ -512,7 +509,7 @@ ref_func(PyObject * obj, int datatype, int d)
  * @note Python callback may return list of broken text or single text.
  */
 static gcstring_t *
-prep_func(linebreak_t * lbobj, void *data, unistr_t * str, unistr_t * text)
+prep_func(linebreak_t * lb, void *data, unistr_t * str, unistr_t * text)
 {
     PyObject *rx = NULL, *func = NULL, *pyret, *pyobj, *args;
     int count, i, j;
@@ -523,7 +520,7 @@ prep_func(linebreak_t * lbobj, void *data, unistr_t * str, unistr_t * text)
     if (text != NULL) {
 	rx = PyTuple_GetItem(data, 0);
 	if (rx == NULL)
-	    return (lbobj->errnum = EINVAL), NULL;
+	    return (lb->errnum = EINVAL), NULL;
 
 	do_re_search_once(rx, str, text);
 	return NULL;
@@ -533,28 +530,28 @@ prep_func(linebreak_t * lbobj, void *data, unistr_t * str, unistr_t * text)
 
     func = PyTuple_GetItem(data, 1);
     if (func == NULL) {
-	if ((ret = gcstring_newcopy(str, lbobj)) == NULL)
-	    return (lbobj->errnum = errno ? errno : ENOMEM), NULL;
+	if ((ret = gcstring_newcopy(str, lb)) == NULL)
+	    return (lb->errnum = errno ? errno : ENOMEM), NULL;
 	return ret;
     }
 
     args = PyTuple_New(2);
-    linebreak_incref(lbobj);	/* prevent destruction */
-    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(lbobj));
+    linebreak_incref(lb);	/* prevent destruction */
+    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(&LineBreak_Type, lb));
     PyTuple_SetItem(args, 1, unicode_FromCstruct(str));	/* FIXME: err */
     pyret = PyObject_CallObject(func, args);
     Py_DECREF(args);
     if (PyErr_Occurred()) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = LINEBREAK_EEXTN;
+	if (!lb->errnum)
+	    lb->errnum = LINEBREAK_EEXTN;
 	return NULL;
     }
     if (pyret == NULL)
 	return NULL;
 
     if (PyList_Check(pyret)) {
-	if ((ret = gcstring_new(NULL, lbobj)) == NULL)
-	    return (lbobj->errnum = errno ? errno : ENOMEM), NULL;
+	if ((ret = gcstring_new(NULL, lb)) == NULL)
+	    return (lb->errnum = errno ? errno : ENOMEM), NULL;
 
 	count = PyList_Size(pyret);
 	for (i = 0; i < count; i++) {
@@ -564,10 +561,10 @@ prep_func(linebreak_t * lbobj, void *data, unistr_t * str, unistr_t * text)
 	    else if (GCStr_Check(pyobj))
 		gcstr = gcstring_copy(GCStr_AS_CSTRUCT(pyobj));
 	    else
-		gcstr = genericstr_ToCstruct(pyobj, lbobj);
+		gcstr = genericstr_ToCstruct(pyobj, lb);
 	    if (gcstr == NULL) {
-		if (!lbobj->errnum)
-		    lbobj->errnum = errno ? errno : LINEBREAK_EEXTN;
+		if (!lb->errnum)
+		    lb->errnum = errno ? errno : LINEBREAK_EEXTN;
 
 		Py_DECREF(pyret);
 		return NULL;
@@ -599,10 +596,10 @@ prep_func(linebreak_t * lbobj, void *data, unistr_t * str, unistr_t * text)
     if (GCStr_Check(pyret))
 	ret = gcstring_copy(GCStr_AS_CSTRUCT(pyret));
     else
-	ret = genericstr_ToCstruct(pyret, lbobj);
+	ret = genericstr_ToCstruct(pyret, lb);
     if (ret == NULL) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = LINEBREAK_EEXTN;
+	if (!lb->errnum)
+	    lb->errnum = LINEBREAK_EEXTN;
 
 	Py_DECREF(pyret);
 	return NULL;
@@ -627,13 +624,13 @@ static char *linebreak_states[] = {
     NULL, "sot", "sop", "sol", "", "eol", "eop", "eot", NULL
 };
 static gcstring_t *
-format_func(linebreak_t * lbobj, linebreak_state_t action, gcstring_t * str)
+format_func(linebreak_t * lb, linebreak_state_t action, gcstring_t * str)
 {
     PyObject *func, *args, *pyret;
     char *actionstr;
     gcstring_t *gcstr;
 
-    func = (PyObject *) lbobj->format_data;
+    func = (PyObject *) lb->format_data;
     if (func == NULL)
 	return NULL;
 
@@ -642,16 +639,17 @@ format_func(linebreak_t * lbobj, linebreak_state_t action, gcstring_t * str)
     actionstr = linebreak_states[(size_t) action];
 
     args = PyTuple_New(3);
-    linebreak_incref(lbobj);	/* prevent destruction */
-    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(lbobj));
+    linebreak_incref(lb);	/* prevent destruction */
+    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(&LineBreak_Type, lb));
     PyTuple_SetItem(args, 1, PyString_FromString(actionstr));
-    PyTuple_SetItem(args, 2, GCStr_FromCstruct(gcstring_copy(str)));
+    PyTuple_SetItem(args, 2, GCStr_FromCstruct(&GCStr_Type,
+					       gcstring_copy(str)));
     pyret = PyObject_CallObject(func, args);
     Py_DECREF(args);
 
     if (PyErr_Occurred()) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = LINEBREAK_EEXTN;
+	if (!lb->errnum)
+	    lb->errnum = LINEBREAK_EEXTN;
 	if (pyret != NULL) {
 	    Py_DECREF(pyret);
 	}
@@ -667,9 +665,9 @@ format_func(linebreak_t * lbobj, linebreak_state_t action, gcstring_t * str)
 
     if (GCStr_Check(pyret))
 	gcstr = gcstring_copy(GCStr_AS_CSTRUCT(pyret));
-    else if ((gcstr = genericstr_ToCstruct(pyret, lbobj)) == NULL) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = errno ? errno : ENOMEM;
+    else if ((gcstr = genericstr_ToCstruct(pyret, lb)) == NULL) {
+	if (!lb->errnum)
+	    lb->errnum = errno ? errno : ENOMEM;
 	PyErr_SetFromErrno(PyExc_RuntimeError);
 	Py_DECREF(pyret);
 	return NULL;
@@ -682,29 +680,32 @@ format_func(linebreak_t * lbobj, linebreak_state_t action, gcstring_t * str)
  * Call sizing function
  */
 static double
-sizing_func(linebreak_t * lbobj, double len,
+sizing_func(linebreak_t * lb, double len,
 	    gcstring_t * pre, gcstring_t * spc, gcstring_t * str)
 {
     PyObject *func, *args, *pyret;
     double ret;
 
-    func = (PyObject *) lbobj->sizing_data;
+    func = (PyObject *) lb->sizing_data;
     if (func == NULL)
 	return -1.0;
 
     args = PyTuple_New(5);
-    linebreak_incref(lbobj);	/* prevent destruction. */
-    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(lbobj));
+    linebreak_incref(lb);	/* prevent destruction. */
+    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(&LineBreak_Type, lb));
     PyTuple_SetItem(args, 1, PyInt_FromSsize_t(len));
-    PyTuple_SetItem(args, 2, GCStr_FromCstruct(gcstring_copy(pre)));
-    PyTuple_SetItem(args, 3, GCStr_FromCstruct(gcstring_copy(spc)));
-    PyTuple_SetItem(args, 4, GCStr_FromCstruct(gcstring_copy(str)));
+    PyTuple_SetItem(args, 2, GCStr_FromCstruct(&GCStr_Type,
+					       gcstring_copy(pre)));
+    PyTuple_SetItem(args, 3, GCStr_FromCstruct(&GCStr_Type,
+					       gcstring_copy(spc)));
+    PyTuple_SetItem(args, 4, GCStr_FromCstruct(&GCStr_Type,
+					       gcstring_copy(str)));
     pyret = PyObject_CallObject(func, args);
     Py_DECREF(args);
 
     if (PyErr_Occurred()) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = LINEBREAK_EEXTN;
+	if (!lb->errnum)
+	    lb->errnum = LINEBREAK_EEXTN;
 	if (pyret != NULL) {
 	    Py_DECREF(pyret);
 	}
@@ -713,8 +714,8 @@ sizing_func(linebreak_t * lbobj, double len,
 
     ret = PyFloat_AsDouble(pyret);
     if (PyErr_Occurred()) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = LINEBREAK_EEXTN;
+	if (!lb->errnum)
+	    lb->errnum = LINEBREAK_EEXTN;
 	Py_DECREF(pyret);
 	return -1.0;
     }
@@ -727,26 +728,27 @@ sizing_func(linebreak_t * lbobj, double len,
  * Call urgent breaking function
  */
 static gcstring_t *
-urgent_func(linebreak_t * lbobj, gcstring_t * str)
+urgent_func(linebreak_t * lb, gcstring_t * str)
 {
     PyObject *func, *args, *pyret, *pyobj;
     size_t count, i;
     gcstring_t *gcstr, *ret;
 
-    func = (PyObject *) lbobj->urgent_data;
+    func = (PyObject *) lb->urgent_data;
     if (func == NULL)
 	return NULL;
 
     args = PyTuple_New(2);
-    linebreak_incref(lbobj);	/* prevent destruction. */
-    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(lbobj));
-    PyTuple_SetItem(args, 1, GCStr_FromCstruct(gcstring_copy(str)));
+    linebreak_incref(lb);	/* prevent destruction. */
+    PyTuple_SetItem(args, 0, LineBreak_FromCstruct(&LineBreak_Type, lb));
+    PyTuple_SetItem(args, 1, GCStr_FromCstruct(&GCStr_Type,
+					       gcstring_copy(str)));
     pyret = PyObject_CallObject(func, args);
     Py_DECREF(args);
 
     if (PyErr_Occurred()) {
-	if (!lbobj->errnum)
-	    lbobj->errnum = LINEBREAK_EEXTN;
+	if (!lb->errnum)
+	    lb->errnum = LINEBREAK_EEXTN;
 	if (pyret != NULL) {
 	    Py_DECREF(pyret);
 	}
@@ -764,12 +766,12 @@ urgent_func(linebreak_t * lbobj, gcstring_t * str)
 	if (GCStr_Check(pyret))
 	    ret = gcstring_copy(GCStr_AS_CSTRUCT(pyret));
 	else
-	    ret = genericstr_ToCstruct(pyret, lbobj);
+	    ret = genericstr_ToCstruct(pyret, lb);
 	Py_DECREF(pyret);
 	return ret;
     }
 
-    ret = gcstring_new(NULL, lbobj);
+    ret = gcstring_new(NULL, lb);
     count = PyList_Size(pyret);
     for (i = 0; i < count; i++) {
 	pyobj = PyList_GetItem(pyret, i);	/* borrowed ref. */
@@ -778,10 +780,10 @@ urgent_func(linebreak_t * lbobj, gcstring_t * str)
 	else if (GCStr_Check(pyobj))
 	    gcstr = gcstring_copy(GCStr_AS_CSTRUCT(pyobj));
 	else
-	    gcstr = genericstr_ToCstruct(pyobj, lbobj);
+	    gcstr = genericstr_ToCstruct(pyobj, lb);
 	if (gcstr == NULL) {
-	    if (!lbobj->errnum)
-		lbobj->errnum = errno ? errno : LINEBREAK_EEXTN;
+	    if (!lb->errnum)
+		lb->errnum = errno ? errno : LINEBREAK_EEXTN;
 
 	    Py_DECREF(pyret);
 	    return NULL;
@@ -816,11 +818,14 @@ static PyObject *LineBreakException;
  */
 
 static void
-LineBreak_dealloc(LineBreakObject * self)
+LineBreak_dealloc(PyObject * self)
 {
-    linebreak_destroy(self->obj);
-    Py_TYPE(self)->tp_free((PyObject *) self);
+    linebreak_destroy(LineBreak_AS_CSTRUCT(self));
+    Py_TYPE(self)->tp_free(self);
 }
+
+static PyObject *
+LineBreak_subtype_new(PyTypeObject *, PyObject *, PyObject *);
 
 static PyObject *
 LineBreak_new(PyTypeObject * type, PyObject * args, PyObject * kwds)
@@ -828,17 +833,18 @@ LineBreak_new(PyTypeObject * type, PyObject * args, PyObject * kwds)
     LineBreakObject *self;
     PyObject *stash;
 
+    if (type != &LineBreak_Type)
+        return LineBreak_subtype_new(type, args, kwds);
+
     if ((self = (LineBreakObject *) type->tp_alloc(type, 0)) == NULL)
 	return NULL;
 
-    if ((self->obj = linebreak_new()) == NULL) {
+    if ((self->obj = linebreak_new(ref_func)) == NULL) {
 	PyErr_SetFromErrno(PyExc_RuntimeError);
 	Py_DECREF(self);
 	return NULL;
     }
 
-    /* set reference count handler */
-    self->obj->ref_func = (void *) ref_func;
     /* set stash, dictionary: See Mapping methods */
     if ((stash = PyDict_New()) == NULL) {
 	Py_DECREF(self);
@@ -849,6 +855,26 @@ LineBreak_new(PyTypeObject * type, PyObject * args, PyObject * kwds)
 
     return (PyObject *) self;
 }
+
+static PyObject *
+LineBreak_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *tmp, *newobj;
+
+    assert(PyType_IsSubtype(type, &LineBreak_Type));
+    if ((tmp = LineBreak_new(&LineBreak_Type, args, kwds)) == NULL)
+	return NULL;
+    assert(LineBreak_CheckExact(tmp));
+    if ((newobj = type->tp_alloc(type, 0)) == NULL) {
+	Py_DECREF(tmp);
+	return NULL;
+    }
+    LineBreak_AS_CSTRUCT(newobj) = LineBreak_AS_CSTRUCT(tmp);
+    LineBreak_AS_CSTRUCT(tmp) = NULL;
+    Py_DECREF(tmp);
+    return newobj;
+}
+
 
 static PyGetSetDef LineBreak_getseters[];
 
@@ -930,18 +956,18 @@ _get_Boolean(eastasian_context, LINEBREAK_OPTION_EASTASIAN_CONTEXT)
 static PyObject *
 LineBreak_get_eaw(PyObject * self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
     val = PyDict_New();
-    if (lbobj->map != NULL && lbobj->mapsiz != 0) {
+    if (lb->map != NULL && lb->mapsiz != 0) {
 	unichar_t c;
 	PyObject *p;
 	size_t i;
-	for (i = 0; i < lbobj->mapsiz; i++)
-	    if (lbobj->map[i].eaw != PROP_UNKNOWN) {
-		p = PyInt_FromLong((signed long) lbobj->map[i].eaw);
-		for (c = lbobj->map[i].beg; c <= lbobj->map[i].end; c++)
+	for (i = 0; i < lb->mapsiz; i++)
+	    if (lb->map[i].eaw != PROP_UNKNOWN) {
+		p = PyInt_FromLong((signed long) lb->map[i].eaw);
+		for (c = lb->map[i].beg; c <= lb->map[i].end; c++)
 		    PyDict_SetItem(val, PyInt_FromLong(c), p);
 	    }
     }
@@ -951,20 +977,20 @@ LineBreak_get_eaw(PyObject * self)
 static PyObject *
 LineBreak_get_format(PyObject * self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
-    if (lbobj->format_func == NULL) {
+    if (lb->format_func == NULL) {
 	val = Py_None;
 	Py_INCREF(val);
-    } else if (lbobj->format_func == linebreak_format_NEWLINE)
+    } else if (lb->format_func == linebreak_format_NEWLINE)
 	val = PyString_FromString("NEWLINE");
-    else if (lbobj->format_func == linebreak_format_SIMPLE)
+    else if (lb->format_func == linebreak_format_SIMPLE)
 	val = PyString_FromString("SIMPLE");
-    else if (lbobj->format_func == linebreak_format_TRIM)
+    else if (lb->format_func == linebreak_format_TRIM)
 	val = PyString_FromString("TRIM");
-    else if (lbobj->format_func == format_func) {
-	val = (PyObject *) lbobj->format_data;
+    else if (lb->format_func == format_func) {
+	val = (PyObject *) lb->format_data;
 	Py_INCREF(val);
     } else {
 	PyErr_Format(PyExc_RuntimeError,
@@ -979,18 +1005,18 @@ _get_Boolean(hangul_as_al, LINEBREAK_OPTION_HANGUL_AS_AL)
 static PyObject *
 LineBreak_get_lbc(PyObject * self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
     val = PyDict_New();
-    if (lbobj->map != NULL && lbobj->mapsiz != 0) {
+    if (lb->map != NULL && lb->mapsiz != 0) {
 	unichar_t c;
 	PyObject *p;
 	size_t i;
-	for (i = 0; i < lbobj->mapsiz; i++)
-	    if (lbobj->map[i].lbc != PROP_UNKNOWN) {
-		p = PyInt_FromLong((signed long) lbobj->map[i].lbc);
-		for (c = lbobj->map[i].beg; c <= lbobj->map[i].end; c++)
+	for (i = 0; i < lb->mapsiz; i++)
+	    if (lb->map[i].lbc != PROP_UNKNOWN) {
+		p = PyInt_FromLong((signed long) lb->map[i].lbc);
+		for (c = lb->map[i].beg; c <= lb->map[i].end; c++)
 		    PyDict_SetItem(val, PyInt_FromLong(c), p);
 	    }
     }
@@ -1008,29 +1034,29 @@ LineBreak_get_newline(PyObject * self)
 static PyObject *
 LineBreak_get_prep(PyObject * self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
-    if (lbobj->prep_func == NULL || lbobj->prep_func[0] == NULL) {
+    if (lb->prep_func == NULL || lb->prep_func[0] == NULL) {
 	val = Py_None;
 	Py_INCREF(val);
     } else {
 	size_t i;
 	PyObject *v;
 	val = PyList_New(0);
-	for (i = 0; lbobj->prep_func[i] != NULL; i++) {
-	    if (lbobj->prep_func[i] == linebreak_prep_URIBREAK) {
-		if (lbobj->prep_data == NULL ||
-		    lbobj->prep_data[i] == NULL)
+	for (i = 0; lb->prep_func[i] != NULL; i++) {
+	    if (lb->prep_func[i] == linebreak_prep_URIBREAK) {
+		if (lb->prep_data == NULL ||
+		    lb->prep_data[i] == NULL)
 		    v = PyString_FromString("NONBREAKURI");
 		else
 		    v = PyString_FromString("BREAKURI");
-	    } else if (lbobj->prep_data == NULL ||
-		       lbobj->prep_data[i] == NULL) {
+	    } else if (lb->prep_data == NULL ||
+		       lb->prep_data[i] == NULL) {
 		v = Py_None;
 		Py_INCREF(v);
 	    } else {
-		v = lbobj->prep_data[i];
+		v = lb->prep_data[i];
 		Py_INCREF(v);
 	    }
 	    PyList_Append(val, v);
@@ -1042,14 +1068,14 @@ LineBreak_get_prep(PyObject * self)
 static PyObject *
 LineBreak_get_sizing(PyObject * self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
-    if (lbobj->sizing_func == NULL)
+    if (lb->sizing_func == NULL)
 	val = Py_None;
-    else if (lbobj->sizing_func == linebreak_sizing_UAX11 ||
-	     lbobj->sizing_func == sizing_func)
-	val = (PyObject *) lbobj->sizing_data;
+    else if (lb->sizing_func == linebreak_sizing_UAX11 ||
+	     lb->sizing_func == sizing_func)
+	val = (PyObject *) lb->sizing_data;
     else {
 	PyErr_Format(PyExc_RuntimeError, "XXX");
 	return NULL;
@@ -1062,18 +1088,18 @@ LineBreak_get_sizing(PyObject * self)
 static PyObject *
 LineBreak_get_urgent(PyObject * self)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
-    if (lbobj->urgent_func == NULL) {
+    if (lb->urgent_func == NULL) {
 	val = Py_None;
 	Py_INCREF(val);
-    } else if (lbobj->urgent_func == linebreak_urgent_ABORT)
+    } else if (lb->urgent_func == linebreak_urgent_ABORT)
 	val = PyString_FromString("RAISE");
-    else if (lbobj->urgent_func == linebreak_urgent_FORCE)
+    else if (lb->urgent_func == linebreak_urgent_FORCE)
 	val = PyString_FromString("FORCE");
-    else if (lbobj->urgent_func == urgent_func) {
-	val = (PyObject *) lbobj->urgent_data;
+    else if (lb->urgent_func == urgent_func) {
+	val = (PyObject *) lb->urgent_data;
 	Py_INCREF(val);
     } else {
 	PyErr_Format(PyExc_RuntimeError, "XXX");
@@ -1088,7 +1114,7 @@ _get_Boolean(virama_as_joiner, LINEBREAK_OPTION_VIRAMA_AS_JOINER)
     static int \
     LineBreak_set_##name(PyObject *self, PyObject *arg, void *closure) \
     { \
-        linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self); \
+        linebreak_t *lb = LineBreak_AS_CSTRUCT(self); \
         long ival; \
     \
         if (arg == NULL) { \
@@ -1101,13 +1127,13 @@ _get_Boolean(virama_as_joiner, LINEBREAK_OPTION_VIRAMA_AS_JOINER)
         if (PyErr_Occurred()) \
 	    return -1; \
         if (ival) \
-	    lbobj->options |= bit; \
+	    lb->options |= bit; \
         else \
-	    lbobj->options &= ~bit; \
+	    lb->options &= ~bit; \
 	return 0; \
     }
 static int
-_update_maps(linebreak_t * lbobj, PyObject * dict, int maptype)
+_update_maps(linebreak_t * lb, PyObject * dict, int maptype)
 {
     Py_ssize_t pos, i;
     PyObject *key, *value, *item;
@@ -1176,9 +1202,9 @@ _update_maps(linebreak_t * lbobj, PyObject * dict, int maptype)
 		    return -1;
 		}
 		if (maptype == 0)
-		    linebreak_update_lbclass(lbobj, c, p);
+		    linebreak_update_lbclass(lb, c, p);
 		else
-		    linebreak_update_eawidth(lbobj, c, p);
+		    linebreak_update_eawidth(lb, c, p);
 	    }
 	    PyErr_Clear();
 	    continue;		/* while (PyDict_Next( ... */
@@ -1193,9 +1219,9 @@ _update_maps(linebreak_t * lbobj, PyObject * dict, int maptype)
 	    return -1;
 	}
 	if (maptype == 0)
-	    linebreak_update_lbclass(lbobj, c, p);
+	    linebreak_update_lbclass(lb, c, p);
 	else
-	    linebreak_update_eawidth(lbobj, c, p);
+	    linebreak_update_eawidth(lb, c, p);
     }
 
     return 0;
@@ -1305,35 +1331,35 @@ _set_Boolean(eastasian_context, LINEBREAK_OPTION_EASTASIAN_CONTEXT)
 static int
 LineBreak_set_eaw(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
 
     if (value == Py_None)
-	linebreak_clear_eawidth(lbobj);
+	linebreak_clear_eawidth(lb);
     else
-	return _update_maps(lbobj, value, 1);
+	return _update_maps(lb, value, 1);
     return 0;
 }
 
 static int
 LineBreak_set_format(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
 
     if (value == NULL)
-	linebreak_set_format(lbobj, NULL, NULL);
+	linebreak_set_format(lb, NULL, NULL);
     else if (value == Py_None)
-	linebreak_set_format(lbobj, NULL, NULL);
+	linebreak_set_format(lb, NULL, NULL);
     else if (PyString_Check(value) || PyUnicode_Check(value)) {
 	char *str;
 	if ((str = genericstr_ToString(value)) == NULL)
 	    return -1;
 
 	if (strcasecmp(str, "SIMPLE") == 0)
-	    linebreak_set_format(lbobj, linebreak_format_SIMPLE, NULL);
+	    linebreak_set_format(lb, linebreak_format_SIMPLE, NULL);
 	else if (strcasecmp(str, "NEWLINE") == 0)
-	    linebreak_set_format(lbobj, linebreak_format_NEWLINE, NULL);
+	    linebreak_set_format(lb, linebreak_format_NEWLINE, NULL);
 	else if (strcasecmp(str, "TRIM") == 0)
-	    linebreak_set_format(lbobj, linebreak_format_TRIM, NULL);
+	    linebreak_set_format(lb, linebreak_format_TRIM, NULL);
 	else {
 	    PyErr_Format(PyExc_ValueError,
 			 "unknown attribute value, %200s", str);
@@ -1343,7 +1369,7 @@ LineBreak_set_format(PyObject * self, PyObject * value, void *closure)
 	}
 	free(str);
     } else if (PyFunction_Check(value))
-	linebreak_set_format(lbobj, format_func, (void *) value);
+	linebreak_set_format(lb, format_func, (void *) value);
     else {
 	PyErr_Format(PyExc_ValueError,
 		     "attribute must be list, not %200s",
@@ -1358,12 +1384,12 @@ _set_Boolean(hangul_as_al, LINEBREAK_OPTION_HANGUL_AS_AL)
 static int
 LineBreak_set_lbc(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
 
     if (value == Py_None)
-	linebreak_clear_lbclass(lbobj);
+	linebreak_clear_lbclass(lb);
     else
-	return _update_maps(lbobj, value, 0);
+	return _update_maps(lb, value, 0);
     return 0;
 }
 
@@ -1372,17 +1398,17 @@ _set_Boolean(legacy_cm, LINEBREAK_OPTION_LEGACY_CM)
 static int
 LineBreak_set_newline(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     unistr_t unistr = { NULL, 0 };
 
     if (value == NULL)
-	linebreak_set_newline(lbobj, &unistr);
+	linebreak_set_newline(lb, &unistr);
     else if (value == Py_None)
-	linebreak_set_newline(lbobj, &unistr);
+	linebreak_set_newline(lb, &unistr);
     else {
 	if (unicode_ToCstruct(&unistr, value) == NULL)
 	    return -1;
-	linebreak_set_newline(lbobj, &unistr);
+	linebreak_set_newline(lb, &unistr);
 	free(unistr.str);
     }
     return 0;
@@ -1391,17 +1417,17 @@ LineBreak_set_newline(PyObject * self, PyObject * value, void *closure)
 static int
 LineBreak_set_prep(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     Py_ssize_t i, len;
     PyObject *item;
     char *str;
 
     if (value == NULL)
-	linebreak_add_prep(lbobj, NULL, NULL);
+	linebreak_add_prep(lb, NULL, NULL);
     else if (value == Py_None)
-	linebreak_add_prep(lbobj, NULL, NULL);
+	linebreak_add_prep(lb, NULL, NULL);
     else if (PyList_Check(value)) {
-	linebreak_add_prep(lbobj, NULL, NULL);
+	linebreak_add_prep(lb, NULL, NULL);
 	len = PyList_Size(value);
 	for (i = 0; i < len; i++) {
 	    item = PyList_GetItem(value, i);
@@ -1409,10 +1435,10 @@ LineBreak_set_prep(PyObject * self, PyObject * value, void *closure)
 		if ((str = genericstr_ToString(item)) == NULL)
 		    break;
 		else if (strcasecmp(str, "BREAKURI") == 0)
-		    linebreak_add_prep(lbobj, linebreak_prep_URIBREAK,
+		    linebreak_add_prep(lb, linebreak_prep_URIBREAK,
 				       Py_True);
 		else if (strcasecmp(str, "NONBREAKURI") == 0)
-		    linebreak_add_prep(lbobj, linebreak_prep_URIBREAK,
+		    linebreak_add_prep(lb, linebreak_prep_URIBREAK,
 				       NULL);
 		else {
 		    PyErr_Format(PyExc_ValueError,
@@ -1443,7 +1469,7 @@ LineBreak_set_prep(PyObject * self, PyObject * value, void *closure)
 
 		    PyTuple_SetItem(item, 0, patt);
 		}
-		linebreak_add_prep(lbobj, prep_func, item);
+		linebreak_add_prep(lb, prep_func, item);
 	    } else {
 		PyErr_Format(PyExc_TypeError,
 			     "prep argument must be list of tuples, not %200s",
@@ -1463,19 +1489,19 @@ LineBreak_set_prep(PyObject * self, PyObject * value, void *closure)
 static int
 LineBreak_set_sizing(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
 
     if (value == NULL)
-	linebreak_set_sizing(lbobj, NULL, NULL);
+	linebreak_set_sizing(lb, NULL, NULL);
     if (value == Py_None)
-	linebreak_set_sizing(lbobj, NULL, NULL);
+	linebreak_set_sizing(lb, NULL, NULL);
     else if (PyString_Check(value) || PyUnicode_Check(value)) {
 	char *str;
 	if ((str = genericstr_ToString(value)) == NULL)
 	    return -1;
 
 	if (strcasecmp(str, "UAX11") == 0)
-	    linebreak_set_sizing(lbobj, linebreak_sizing_UAX11, NULL);
+	    linebreak_set_sizing(lb, linebreak_sizing_UAX11, NULL);
 	else {
 	    PyErr_Format(PyExc_ValueError,
 			 "unknown attribute value %200s", str);
@@ -1485,7 +1511,7 @@ LineBreak_set_sizing(PyObject * self, PyObject * value, void *closure)
 	}
 	free(str);
     } else if (PyFunction_Check(value))
-	linebreak_set_sizing(lbobj, sizing_func, (void *) value);
+	linebreak_set_sizing(lb, sizing_func, (void *) value);
     else {
 	PyErr_Format(PyExc_ValueError,
 		     "attribute must be function, not %200s",
@@ -1498,21 +1524,21 @@ LineBreak_set_sizing(PyObject * self, PyObject * value, void *closure)
 static int
 LineBreak_set_urgent(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
 
     if (value == NULL)
-	linebreak_set_urgent(lbobj, NULL, NULL);
+	linebreak_set_urgent(lb, NULL, NULL);
     else if (value == Py_None)
-	linebreak_set_urgent(lbobj, NULL, NULL);
+	linebreak_set_urgent(lb, NULL, NULL);
     else if (PyString_Check(value) || PyUnicode_Check(value)) {
 	char *str;
 
 	if ((str = genericstr_ToString(value)) == NULL)
 	    return -1;
 	else if (strcasecmp(str, "FORCE") == 0)
-	    linebreak_set_urgent(lbobj, linebreak_urgent_FORCE, NULL);
+	    linebreak_set_urgent(lb, linebreak_urgent_FORCE, NULL);
 	else if (strcasecmp(str, "RAISE") == 0)
-	    linebreak_set_urgent(lbobj, linebreak_urgent_ABORT, NULL);
+	    linebreak_set_urgent(lb, linebreak_urgent_ABORT, NULL);
 	else {
 	    PyErr_Format(PyExc_ValueError,
 			 "unknown attribute value %200s", str);
@@ -1522,7 +1548,7 @@ LineBreak_set_urgent(PyObject * self, PyObject * value, void *closure)
 	}
 	free(str);
     } else if (PyFunction_Check(value))
-	linebreak_set_urgent(lbobj, urgent_func, (void *) value);
+	linebreak_set_urgent(lb, urgent_func, (void *) value);
     else {
 	PyErr_Format(PyExc_ValueError,
 		     "attribute must be list, not %200s",
@@ -1581,7 +1607,7 @@ Enable East Asian language/region context.")},
 Tailor classification of East_Asian_Width property.  \
 Value may be a dictionary with its keys are Unicode string or \
 UCS scalar and with its values are any of East_Asian_Width properties \
-(See class properties).  \
+(see documentation of Consts module).  \
 If None is specified, all tailoring assigned before will be canceled.\n\
 By default, no tailorings are available.")},
     {"format",
@@ -1589,19 +1615,19 @@ By default, no tailorings are available.")},
      (setter) LineBreak_set_format,
      PyDoc_STR("\
 Specify the method to format broken lines.\n\
-: \"SIMPLE\" : \
-Just only insert newline at arbitrary breaking positions.\n\
-: \"NEWLINE\" : \
-Insert or replace newline sequences with that specified by newline option, \
-remove SPACEs leading newline sequences or end-of-text.  Then append newline \
-at end of text if it does not exist.\n\
-: \"TRIM\" : \
-Insert newline at arbitrary breaking positions.  Remove SPACEs leading \
-newline sequences.\n\
-: None : \
-Do nothing, even inserting any newlines.\n\
-: callable object : \
-See \"Formatting Lines\".")},
+``\"SIMPLE\"``\n\
+    Just only insert newline at arbitrary breaking positions.\n\
+``\"NEWLINE\"``\n\
+    Insert or replace newline sequences with that specified by `newline`_ \n\
+    option, remove SPACEs leading newline sequences or end-of-text.  Then \n\
+    append `newline`_ at end of text if it does not exist.\n\
+``\"TRIM\"``\n\
+    Insert `newline`_ at arbitrary breaking positions.  Remove SPACEs \n\
+    leading newline sequences.\n\
+``None``\n\
+    Do nothing, even inserting any newlines.\n\
+callable object\n\
+    See \"Formatting Lines\".")},
     {"hangul_as_al",
      (getter) LineBreak_get_hangul_as_al,
      (setter) LineBreak_set_hangul_as_al,
@@ -1616,7 +1642,7 @@ Tailor classification of line breaking property.  \
 Value may be a dictionary with its keys are Unicode string or \
 UCS scalar and its values with any of Line Breaking Classes \
 (See class properties).  \
-If None is specified, all tailoring assigned before will be canceled.\n\
+If ``None`` is specified, all tailoring assigned before will be canceled.\n\
 By default, no tailorings are available.")},
     {"legacy_cm",
      (getter) LineBreak_get_legacy_cm,
@@ -1630,52 +1656,53 @@ recommended.")},
      (setter) LineBreak_set_newline,
      PyDoc_STR("\
 Unicode string to be used for newline sequence.  \
-It may be None.")},
+It may be ``None``.")},
     {"prep",
      (getter) LineBreak_get_prep,
      (setter) LineBreak_set_prep,
      PyDoc_STR("\
 Add user-defined line breaking behavior(s).  \
 Value shall be list of items described below.\n\
-: \"NONBREAKURI\" : \
-Won't break URIs.\n\
-: \"BREAKURI\" : \
-Break URIs according to a rule suitable for printed materials.  \
-For more details see [CMOS], sections 6.17 and 17.11.\n\
-: (regex object, callable object) : \
-The sequences matching regex object will be broken by callable object.  \
-For more details see \"User-Defined Breaking Behaviors\".\n\
-: None : \
-Cancel all methods assigned before.")},
+``\"NONBREAKURI\"``\n\
+    Won't break URIs.\n\
+``\"BREAKURI\"``\n\
+    Break URIs according to a rule suitable for printed materials.  For \n\
+    more details see [CMOS], sections 6.17 and 17.11.\n\
+``(``regex object``,`` callable object``)``\n\
+    The sequences matching regex object will be broken by callable object.  \n\
+    For more details see \"User-Defined Breaking Behaviors\".\n\
+``None``\n\
+    Cancel all methods assigned before.")},
     {"sizing",
      (getter) LineBreak_get_sizing,
      (setter) LineBreak_set_sizing,
      PyDoc_STR("\
 Specify method to calculate size of string.  \
 Following options are available.\n\
-: \"UAX11\" : \
-Sizes are computed by columns of each characters.\n\
-: None : \
-Number of grapheme clusters (See documentation of GCStr class) contained \
-in the string.\n\
-: callable object : \
-See \"Calculating String Size\".\n\
+``\"UAX11\"``\n\
+    Sizes are computed by columns of each characters.\n\
+``None``\n\
+    Number of grapheme clusters (See documentation of GCStr class) \n\
+    contained in the string.\n\
+callable object\n\
+    See \"Calculating String Size\".\n\
 \n\
-See also eaw property.")},
+See also `eaw`_ property.")},
     {"urgent",
      (getter) LineBreak_get_urgent,
      (setter) LineBreak_set_urgent,
      PyDoc_STR("\
 Specify method to handle excessing lines.  \
 Following options are available.\n\
-: \"RAISE\" : \
-Raise an exception.\n\
-: \"FORCE\" : \
-Force breaking excessing fragment.\n\
-: None : \
-Won't break excessing fragment.\n\
-: callable object : \
-See \"User-Defined Breaking Behaviors\".")},
+\n\
+``\"RAISE\"``\n\
+    Raise an exception.\n\
+``\"FORCE\"``\n\
+    Force breaking excessing fragment.\n\
+``None``\n\
+    Won't break excessing fragment.\n\
+callable object\n\
+    See \"User-Defined Breaking Behaviors\".")},
     {"virama_as_joiner",
      (getter) LineBreak_get_virama_as_joiner,
      (setter) LineBreak_set_virama_as_joiner,
@@ -1706,12 +1733,12 @@ LineBreak_subscript(PyObject * self, PyObject * key)
 static int
 LineBreak_ass_subscript(PyObject * self, PyObject * key, PyObject * value)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
 
     if (value == NULL)
-	return PyObject_DelItem(lbobj->stash, key);
+	return PyObject_DelItem(lb->stash, key);
     else
-	return PyObject_SetItem(lbobj->stash, key, value);
+	return PyObject_SetItem(lb->stash, key, value);
 }
 
 static PyMappingMethods LineBreak_as_mapping = {
@@ -1730,8 +1757,13 @@ Copy LineBreak object.");
 static PyObject *
 LineBreak_copy(PyObject * self, PyObject * args)
 {
-    return
-	LineBreak_FromCstruct(linebreak_copy(LineBreak_AS_CSTRUCT(self)));
+    linebreak_t *lb;
+
+    if ((lb = linebreak_copy(LineBreak_AS_CSTRUCT(self))) == NULL) {
+	PyErr_SetFromErrno(PyExc_RuntimeError);
+	return NULL;
+    }
+    return LineBreak_FromCstruct(Py_TYPE(self), lb);
 }
 
 PyDoc_STRVAR(LineBreak_wrap__doc__, "\
@@ -1743,8 +1775,9 @@ result.  Each item of list is grapheme cluster string (GCStr object).");
 static PyObject *
 LineBreak_wrap(PyObject * self, PyObject * args)
 {
-    linebreak_t *lbobj = LineBreak_AS_CSTRUCT(self);
+    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *str, *ret;
+    PyTypeObject *type;
     unistr_t unistr = { NULL, 0 };
     gcstring_t **broken;
     size_t i;
@@ -1754,8 +1787,13 @@ LineBreak_wrap(PyObject * self, PyObject * args)
     if (unicode_ToCstruct(&unistr, str) == NULL)
 	return NULL;
 
-    linebreak_reset(lbobj);
-    broken = linebreak_break(lbobj, &unistr);
+    if (GCStr_Check(str))
+	type = Py_TYPE(str);
+    else
+	type = &GCStr_Type;
+
+    linebreak_reset(lb);
+    broken = linebreak_break(lb, &unistr);
     free(unistr.str);
     if (PyErr_Occurred()) {
 	if (broken != NULL) {
@@ -1766,11 +1804,11 @@ LineBreak_wrap(PyObject * self, PyObject * args)
 	free(broken);
 	return NULL;
     } else if (broken == NULL) {
-	if (lbobj->errnum == LINEBREAK_ELONG)
+	if (lb->errnum == LINEBREAK_ELONG)
 	    PyErr_SetString(LineBreakException,
 			    "Excessive line was found");
-	else if (lbobj->errnum) {
-	    errno = lbobj->errnum;
+	else if (lb->errnum) {
+	    errno = lb->errnum;
 	    PyErr_SetFromErrno(PyExc_RuntimeError);
 	} else
 	    PyErr_SetString(PyExc_RuntimeError, "unknown error");
@@ -1780,7 +1818,7 @@ LineBreak_wrap(PyObject * self, PyObject * args)
     ret = PyList_New(0);
     for (i = 0; broken[i] != NULL; i++) {
 	PyObject *v;
-	if ((v = GCStr_FromCstruct(broken[i])) == NULL) {
+	if ((v = GCStr_FromCstruct(type, broken[i])) == NULL) {
 	    Py_DECREF(ret);
 	    for (; broken[i] != NULL; i++)
 		gcstring_destroy(broken[i]);
@@ -1806,7 +1844,7 @@ static PyMethodDef LineBreak_methods[] = {
 };
 
 
-static PyTypeObject LineBreakType = {
+static PyTypeObject LineBreak_Type = {
 #if PY_MAJOR_VERSION >= 3
     PyVarObject_HEAD_INIT(NULL, 0)
 #else				/* PY_MAJOR_VERSION */
@@ -1816,7 +1854,7 @@ static PyTypeObject LineBreakType = {
     "_textseg.LineBreak",	/*tp_name */
     sizeof(LineBreakObject),	/*tp_basicsize */
     0,				/*tp_itemsize */
-    (destructor) LineBreak_dealloc,	/*tp_dealloc */
+    LineBreak_dealloc,		/*tp_dealloc */
     0,				/*tp_print */
     0,				/*tp_getattr */
     0,				/*tp_setattr */
@@ -1843,7 +1881,7 @@ static PyTypeObject LineBreakType = {
     0,				/* tp_members */
     LineBreak_getseters,	/* tp_getset */
     0,				/* tp_base */
-    0,				/* tp_dict: See LineBreak_dict_init() */
+    0,				/* tp_dict */
     0,				/* tp_descr_get */
     0,				/* tp_descr_set */
     0,				/* tp_dictoffset */
@@ -1862,46 +1900,67 @@ static PyTypeObject LineBreakType = {
  */
 
 static void
-GCStr_dealloc(GCStrObject * self)
+GCStr_dealloc(PyObject * self)
 {
-    gcstring_destroy(self->obj);
-    Py_TYPE(self)->tp_free((PyObject *) self);
+    gcstring_destroy(GCStr_AS_CSTRUCT(self));
+    Py_TYPE(self)->tp_free(self);
 }
+
+static PyObject *
+GCStr_subtype_new(PyTypeObject *, PyObject *, PyObject *);
+
+static PyObject *
+GCStr_copy(PyObject *, PyObject *);
 
 static PyObject *
 GCStr_new(PyTypeObject * type, PyObject * args, PyObject * kwds)
 {
-    GCStrObject *self;
-    if ((self = (GCStrObject *) type->tp_alloc(type, 0)) == NULL)
-	return NULL;
-    return (PyObject *) self;
-}
-
-static int
-GCStr_init(GCStrObject * self, PyObject * args, PyObject * kwds)
-{
-    unistr_t unistr = { NULL, 0 };
     PyObject *pystr = NULL, *pyobj = NULL;
-    linebreak_t *lbobj;
+    static char *kwlist[] = { "object", "lb", NULL };
+    gcstring_t *gcstr;
+    linebreak_t *lb;
 
-    if (!PyArg_ParseTuple(args, "O|O!", &pystr, &LineBreakType, &pyobj))
-	return -1;
+    if (type != &GCStr_Type)
+	return GCStr_subtype_new(type, args, kwds);
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OO!:GCStr", kwlist,
+				     &pystr, &LineBreak_Type, &pyobj))
+	return NULL;
 
     if (pyobj == NULL)
-	lbobj = NULL;
+        lb = NULL;
     else
-	lbobj = LineBreak_AS_CSTRUCT(pyobj);
+        lb = LineBreak_AS_CSTRUCT(pyobj);
 
-    if (unicode_ToCstruct(&unistr, pystr) == NULL)
-	return -1;
-    if ((self->obj = gcstring_new(&unistr, lbobj)) == NULL) {
-	PyErr_SetFromErrno(PyExc_RuntimeError);
+    if (pystr == NULL) {
+	if ((gcstr = gcstring_new(NULL, lb)) == NULL) {
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+	    return NULL;
+	}
+    } else if (GCStr_Check(pystr))
+	return GCStr_copy(pystr, NULL);
+    else if ((gcstr = genericstr_ToCstruct(pystr, lb)) == NULL)
+	return NULL;
 
-	free(unistr.str);
-	return -1;
+    return GCStr_FromCstruct(&GCStr_Type, gcstr);
+}
+
+static PyObject *
+GCStr_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *tmp, *newobj;
+
+    assert(PyType_IsSubtype(type, &GCStr_Type));
+    if ((tmp = GCStr_new(&GCStr_Type, args, kwds)) == NULL)
+	return NULL;
+    assert(GCStr_CheckExact(tmp));
+    if ((newobj = type->tp_alloc(type, 0)) == NULL) {
+	Py_DECREF(tmp);
+	return NULL;
     }
-
-    return 0;
+    GCStr_AS_CSTRUCT(newobj) = GCStr_AS_CSTRUCT(tmp);
+    GCStr_AS_CSTRUCT(tmp) = NULL;
+    Py_DECREF(tmp);
+    return newobj;
 }
 
 /*
@@ -1998,18 +2057,18 @@ static PyObject *
 GCStr_compare(PyObject * a, PyObject * b, int op)
 {
     gcstring_t *astr, *bstr;
-    linebreak_t *lbobj;
+    linebreak_t *lb;
     int cmp;
 
     if (GCStr_Check(a))
-	lbobj = GCStr_AS_CSTRUCT(a)->lbobj;
+	lb = GCStr_AS_CSTRUCT(a)->lbobj;
     else if (GCStr_Check(b))
-	lbobj = GCStr_AS_CSTRUCT(b)->lbobj;
+	lb = GCStr_AS_CSTRUCT(b)->lbobj;
     else
-	lbobj = NULL;
+	lb = NULL;
 
-    if ((astr = genericstr_ToCstruct(a, lbobj)) == NULL ||
-	(bstr = genericstr_ToCstruct(b, lbobj)) == NULL) {
+    if ((astr = genericstr_ToCstruct(a, lb)) == NULL ||
+	(bstr = genericstr_ToCstruct(b, lb)) == NULL) {
 	if (a != NULL && !GCStr_Check(a))
 	    gcstring_destroy(astr);
 	return NULL;
@@ -2053,17 +2112,22 @@ static PyObject *
 GCStr_concat(PyObject * o1, PyObject * o2)
 {
     gcstring_t *gcstr1, *gcstr2, *gcstr;
-    linebreak_t *lbobj;
+    linebreak_t *lb;
+    PyTypeObject *type;
 
-    if (GCStr_Check(o1))
-	lbobj = GCStr_AS_CSTRUCT(o1)->lbobj;
-    else if (GCStr_Check(o2))
-	lbobj = GCStr_AS_CSTRUCT(o2)->lbobj;
-    else
-	lbobj = NULL;
+    if (GCStr_Check(o1)) {
+	lb = GCStr_AS_CSTRUCT(o1)->lbobj;
+	type = Py_TYPE(o1);
+    } else if (GCStr_Check(o2)) {
+	lb = GCStr_AS_CSTRUCT(o2)->lbobj;
+	type = Py_TYPE(o2);
+    } else {
+	lb = NULL;
+	type = &GCStr_Type;
+    }
 
-    if ((gcstr1 = genericstr_ToCstruct(o1, lbobj)) == NULL ||
-	(gcstr2 = genericstr_ToCstruct(o2, lbobj)) == NULL) {
+    if ((gcstr1 = genericstr_ToCstruct(o1, lb)) == NULL ||
+	(gcstr2 = genericstr_ToCstruct(o2, lb)) == NULL) {
 	if (!GCStr_Check(o1))
 	    gcstring_destroy(gcstr1);
 	return NULL;
@@ -2082,7 +2146,7 @@ GCStr_concat(PyObject * o1, PyObject * o2)
 	gcstring_destroy(gcstr1);
     if (!GCStr_Check(o2))
 	gcstring_destroy(gcstr2);
-    return GCStr_FromCstruct(gcstr);
+    return GCStr_FromCstruct(type, gcstr);
 }
 
 static PyObject *
@@ -2091,8 +2155,7 @@ GCStr_repeat(PyObject * self, Py_ssize_t count)
     gcstring_t *gcstr;
     Py_ssize_t i;		/* need signed comparison */
 
-    if ((gcstr = gcstring_new(NULL, GCStr_AS_CSTRUCT(self)->lbobj))
-	== NULL) {
+    if ((gcstr = gcstring_new(NULL, GCStr_AS_CSTRUCT(self)->lbobj)) == NULL) {
 	PyErr_SetFromErrno(PyExc_RuntimeError);
 	return NULL;
     }
@@ -2101,7 +2164,7 @@ GCStr_repeat(PyObject * self, Py_ssize_t count)
 	    PyErr_SetFromErrno(PyExc_RuntimeError);
 	    return NULL;
 	}
-    return GCStr_FromCstruct(gcstr);
+    return GCStr_FromCstruct(Py_TYPE(self), gcstr);
 }
 
 static PyObject *
@@ -2123,7 +2186,7 @@ GCStr_item(PyObject * self, Py_ssize_t i)
 	gcstring_destroy(gcstr);
 	return NULL;
     }
-    return GCStr_FromCstruct(gcstr);
+    return GCStr_FromCstruct(Py_TYPE(self), gcstr);
 }
 
 static PyObject *
@@ -2147,7 +2210,7 @@ GCStr_slice(PyObject * self, Py_ssize_t start, Py_ssize_t end)
 	PyErr_SetFromErrno(PyExc_RuntimeError);
 	return NULL;
     }
-    return GCStr_FromCstruct(gcstr);
+    return GCStr_FromCstruct(Py_TYPE(self), gcstr);
 }
 
 static int
@@ -2186,11 +2249,11 @@ GCStr_ass_slice(PyObject * self, Py_ssize_t start, Py_ssize_t end,
 		PyObject * v)
 {
     gcstring_t *gcstr, *repl;
-    linebreak_t *lbobj = GCStr_AS_CSTRUCT(self)->lbobj;
+    linebreak_t *lb = GCStr_AS_CSTRUCT(self)->lbobj;
 
     if (v == NULL)
-	repl = gcstring_new(NULL, lbobj);
-    else if ((repl = genericstr_ToCstruct(v, lbobj)) == NULL)
+	repl = gcstring_new(NULL, lb);
+    else if ((repl = genericstr_ToCstruct(v, lb)) == NULL)
 	return -1;
 
     /* standard clamping */
@@ -2248,9 +2311,11 @@ GCStr_subscript(PyObject * self, PyObject * item)
 #endif				/* PY_MAJOR_VERSION ... */
 
 	if (len <= 0)
-	    return GCStr_FromCstruct(gcstring_new(NULL, gcstr->lbobj));
+	    return GCStr_FromCstruct(Py_TYPE(self),
+				     gcstring_new(NULL, gcstr->lbobj));
 	else if (step == 1)
-	    return GCStr_FromCstruct(gcstring_substr(gcstr, start, len));
+	    return GCStr_FromCstruct(Py_TYPE(self),
+				     gcstring_substr(gcstr, start, len));
 	if ((result = gcstring_new(NULL, gcstr->lbobj)) == NULL) {
 	    PyErr_SetFromErrno(PyExc_RuntimeError);
 	    return NULL;
@@ -2262,7 +2327,7 @@ GCStr_subscript(PyObject * self, PyObject * item)
 		gcstring_destroy(result);
 		return NULL;
 	    }
-	return GCStr_FromCstruct(result);
+	return GCStr_FromCstruct(Py_TYPE(self), result);
     } else {
 	PyErr_SetString(PyExc_TypeError, "GCStr indices must be integers");
 	return NULL;
@@ -2379,7 +2444,13 @@ Create a copy of GCStr object.");
 static PyObject *
 GCStr_copy(PyObject * self, PyObject * args)
 {
-    return GCStr_FromCstruct(gcstring_copy(GCStr_AS_CSTRUCT(self)));
+    gcstring_t *gcstr;
+
+    if ((gcstr = gcstring_copy(GCStr_AS_CSTRUCT(self))) == NULL) {
+	PyErr_SetFromErrno(PyExc_RuntimeError);
+	return NULL;
+    }
+    return GCStr_FromCstruct(Py_TYPE(self), gcstr);
 }
 
 PyDoc_STRVAR(GCStr_flag__doc__, "S.flag(offset [, value]) => int\n\
@@ -2387,10 +2458,12 @@ PyDoc_STRVAR(GCStr_flag__doc__, "S.flag(offset [, value]) => int\n\
 Get and optionally set flag value of offset-th grapheme cluster.  \
 Flag value is an non-zero integer not greater than 255 and initially is 0.\n\
 Predefined flag values are:\n\
-: ALLOW_BEFORE : \
-Allow line breaking just before this grapheme cluster.\n\
-: PROHIBIT_BEFORE : \
-Prohibit line breaking just before this grapheme cluster.");
+\n\
+``ALLOW_BEFORE``\n\
+    Allow line breaking just before this grapheme cluster.\n\
+\n\
+``PROHIBIT_BEFORE``\n\
+    Prohibit line breaking just before this grapheme cluster.");
 
 static PyObject *
 GCStr_flag(PyObject * self, PyObject * args)
@@ -2447,7 +2520,7 @@ static PyMethodDef GCStr_methods[] = {
 };
 
 
-static PyTypeObject GCStrType = {
+static PyTypeObject GCStr_Type = {
 #if PY_MAJOR_VERSION >= 3
     PyVarObject_HEAD_INIT(NULL, 0)
 #else				/* PY_MAJOR_VERSION */
@@ -2457,7 +2530,7 @@ static PyTypeObject GCStrType = {
     "_textseg.GCStr",		/*tp_name */
     sizeof(GCStrObject),	/*tp_basicsize */
     0,				/*tp_itemsize */
-    (destructor) GCStr_dealloc,	/*tp_dealloc */
+    GCStr_dealloc,		/*tp_dealloc */
     0,				/*tp_print */
     0,				/*tp_getattr */
     0,				/*tp_setattr */
@@ -2492,7 +2565,7 @@ static PyTypeObject GCStrType = {
     0,				/* tp_descr_get */
     0,				/* tp_descr_set */
     0,				/* tp_dictoffset */
-    (initproc) GCStr_init,	/* tp_init */
+    0,				/* tp_init */
     0,				/* tp_alloc */
     GCStr_new,			/* tp_new */
 };
@@ -2536,14 +2609,12 @@ init_textseg(void)
 	 PyErr_NewException("_textseg.Error", NULL, NULL))
 	== NULL)
 	INITERROR;
-    if (PyType_Ready(&LineBreakType) < 0) {
+    if (PyType_Ready(&LineBreak_Type) < 0) {
 	Py_DECREF(LineBreakException);
-	Py_DECREF(LineBreakType.tp_dict);
 	INITERROR;
     }
-    if (PyType_Ready(&GCStrType) < 0) {
+    if (PyType_Ready(&GCStr_Type) < 0) {
 	Py_DECREF(LineBreakException);
-	Py_DECREF(LineBreakType.tp_dict);
 	INITERROR;
     }
 #if PY_MAJOR_VERSION >= 3
@@ -2553,16 +2624,15 @@ init_textseg(void)
 #endif				/* PY_MAJOR_VERSION */
     if (m == NULL) {
 	Py_DECREF(LineBreakException);
-	Py_DECREF(LineBreakType.tp_dict);
 	INITERROR;
     }
 
     Py_INCREF(LineBreakException);
     PyModule_AddObject(m, "Error", LineBreakException);
-    Py_INCREF(&LineBreakType);
-    PyModule_AddObject(m, "LineBreak", (PyObject *) & LineBreakType);
-    Py_INCREF(&GCStrType);
-    PyModule_AddObject(m, "GCStr", (PyObject *) & GCStrType);
+    Py_INCREF(&LineBreak_Type);
+    PyModule_AddObject(m, "LineBreak", (PyObject *) & LineBreak_Type);
+    Py_INCREF(&GCStr_Type);
+    PyModule_AddObject(m, "GCStr", (PyObject *) & GCStr_Type);
 
 #if PY_MAJOR_VERSION >= 3
     return m;

@@ -38,7 +38,7 @@ INSTALL_DOC_DIR = 'share/doc/pytextseg'
 if __name__ == '__main__':
     setup(
         name="pytextseg",
-        version='0.0.2',
+        version='0.0.3',
         license="GNU General Public License (GPL)",
         description='Python module for text segmentation.',
         long_description=open('README', 'r').read(),
@@ -54,6 +54,8 @@ if __name__ == '__main__':
 	    "License :: OSI Approved :: GNU General Public License (GPL)",
 	    "Operating System :: OS Independent",
 	    "Programming Language :: Python",
+	    "Programming Language :: Python :: 2",
+	    "Programming Language :: Python :: 3",
 	    "Programming Language :: C",
 	    "Topic :: Software Development :: Internationalization",
 	    "Topic :: Software Development :: Libraries :: Python Modules",

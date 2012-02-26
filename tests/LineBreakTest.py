@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
 import unittest
-from textseg import LineBreak
+from textseg import LineBreak, fill, fold
+from textseg.Consts import eawZ, eawN, lbcID, sea_support
 
 try:
     unicode, unichr
@@ -13,8 +15,6 @@ except NameError:
 
 def unistr(list):
     return ''.join([unichr(c) for c in list])
-
-from textseg.Consts import eawZ, eawN, lbcID
 
 LineBreak.DEFAULTS = {
     'charmax': 998,
@@ -39,14 +39,79 @@ AMBIG_LATIN = unistr([0x00C6, 0x00D0, 0x00D8, 0x00DE, 0x00DF, 0x00E0, 0x00E1, 0x
 
 class LineBreakTest(unittest.TestCase):
 
+    def readText(self, fn):
+        fp = open(os.path.join('test-data', fn), 'rb')
+        ret = unicode(fp.read(), 'utf-8')
+        fp.close()
+        return ret
+
     def doTest(self, pairs, **kwds):
         lb = LineBreak(**kwds)
         for infn, outfn in pairs:
-            instring = unicode(open(os.path.join('test-data', infn + '.in'), 'rb').read(), 'utf-8')
+            instring = self.readText(infn + '.in')
             b = lb.wrap(instring)
             broken = ''.join([unicode(x) for x in b])
-            outstring = unicode(open(os.path.join('test-data', outfn + '.out'), 'rb').read(), 'utf-8')
+            outstring = self.readText(outfn + '.out')
             self.assertEqual(broken, outstring)
+
+    def test_00LineBreakTest(self):
+        commentRe = re.compile(r'\s*#\s*')
+        opRe = re.compile(r'\s*(?:' + unichr(0xF7) + '|' + unichr(0xD7) + r')\s*')
+
+        try:
+            fp = open(os.path.join('test-data', 'LineBreakTest.txt'), 'rb')
+        except IOError:
+            return
+
+        eaw = {}
+        for c in range(1, 0xFFFD):
+            eaw[unichr(c)] = eawN
+        lb = LineBreak(break_indent = False,
+             width = 1,
+             eaw = eaw,
+             format = None,
+             legacy_cm = False)
+
+        print('')
+        print(fp.readline().strip())
+        print(fp.readline().strip())
+
+        errs = 0
+        tests = 0
+        for l in fp.readlines():
+            l = unicode(l, 'utf-8').rstrip()
+            a = commentRe.split(l, 1)
+            if len(a) > 1:
+                desc = a[1]
+            else:
+                desc = ''
+            l = a[0].strip()
+            if not len(l):
+                continue
+
+            if l.startswith(unichr(0xD7)):      # ÷
+                l = l[1:].lstrip()
+            if l.endswith(unichr(0xF7)):        # ×
+                l = l[:-1].rstrip()
+
+            s = ''.join([unichr(int(c, 16))
+                         for c in opRe.split(l)
+                         if len(c) > 0])
+            b = unistr([0x20, 0xF7, 0x20]).join([unistr([0x20, 0xD7, 0x20]).join(['%04X' % ord(c) for c in unicode(x)])
+                                                for x in lb.wrap(s)])
+            try:
+                self.assertEqual(b, l)
+            except AssertionError:
+                import sys
+                import traceback
+                print('Failed: %s' % desc)
+                traceback.print_exc(0)
+                errs = errs + 1
+            tests = tests + 1
+        fp.close()
+
+        if errs > 0:
+            raise AssertionError("%d of %d subtests are failed." % (errs, tests))
 
     def test_01break(self):
         langs = ['ar', 'el', 'fr', 'he', 'ja', 'ja-a', 'ko', 'ru',
@@ -61,6 +126,21 @@ class LineBreakTest(unittest.TestCase):
         self.doTest([('ja-k', 'ja-k')], width=72)
         self.doTest([('ja-k', 'ja-k.ns')],
                     lbc={ SMALL_KANA: lbcID }, width=72)
+
+    def test_04fold(self):
+        for lang in ('ja', 'fr', 'quotes'):
+            instring = self.readText(lang + '.in')
+            folded = {}
+            for meth in ['plain', 'fixed', 'flowed']:
+                folded[meth] = fold(instring, meth)
+                outstring = self.readText(lang + '.' + meth + '.out')
+                self.assertEqual(folded[meth], outstring)
+            '''
+            for meth in ['fixed', 'flowed']:
+                outstring = unfold(folded[meth], meth)
+                instring = self.readText(lang + '.' + 'norm.in')
+                self.assertEqual(outstring, instring)
+            '''
 
     def test_05urgent(self):
         self.doTest([('ecclesiazusae', 'ecclesiazusae')]);
@@ -83,12 +163,10 @@ class LineBreakTest(unittest.TestCase):
                     eaw={ AMBIG_LATIN: eawN })
 
     def test_07sea(self):
-        from textseg.Consts import sea_support
-
         if sea_support is not None:
-            print(('\nSA word segmentation supported: %s' % sea_support))
+            print(('\n# SA word segmentation supported: %s' % sea_support))
         else:
-            print('\nSA word segmentation not supported.')
+            print('\n# SA word segmentation not supported.')
             return
         self.doTest([('th', 'th')], complex_breaking=True)
 
@@ -97,33 +175,49 @@ class LineBreakTest(unittest.TestCase):
         self.doTest([('uri', 'uri.nonbreak')], width=1, prep=['NONBREAKURI'])
 
     def test_11format(self):
-        def format_func(self, state, s):
+        def format(self, state, s):
             if state.startswith('so'):
-                return '    ' + state + '>' + unicode(s)
+                return s * 0 + '    ' + state + '>' + s
             if state.startswith('eo'):
                 return '<' + state + "\n"
             return None
+
         self.doTest([(x, x + '.format') for x in ['fr', 'ja']],
-                    format=format_func)
+                    format = format)
         self.doTest([(x, x + '.newline') for x in ['fr', 'ko']],
-                    format='NEWLINE')
+                    format = 'NEWLINE')
         self.doTest([(x, x + '.newline') for x in ['fr', 'ko']],
-                    format='TRIM')
+                    format = 'TRIM')
+
+    def test_12fill(self):
+        for lang in ['ja', 'fr']:
+            instring = self.readText(lang + '.in')
+            folded = fill(instring, width = 76, initial_indent = ' ' * 8,
+                          subsequent_indent = ' ' * 4) + "\n"
+            outstring = self.readText(lang + '.wrap.out').expandtabs()
+            self.assertEqual(folded, outstring)
+
+    '''
+    def test_13flowedsp(self):
+        for lang in ['flowedsp']:
+            instring = self.readText(lang + '.in')
+            unfolded = unfold(instring, 'flowedsp');
+            outstring = self.readText(lang + '.out')
+            self.assertEqual(unfolded, outstring)
+    '''
 
     def test_14sea_al(self):
         self.doTest([('th', 'th.al')], complex_breaking=False)
 
     def doTestArray(self, pairs, **kwds):
         for infn, outfn in pairs:
-            instring = unicode(open(os.path.join('test-data',
-                                                 infn + '.in'), 'rb').read(),
-                               'utf-8')
+            instring = self.readText(infn + '.in')
             lb = LineBreak(**kwds)
             broken = [unicode(x) for x in lb.wrap(instring)]
-            outstring = [unicode(x, 'utf-8') for x in \
-                         open(os.path.join('test-data',
-                                           outfn + '.out'), 'rb').readlines()]
-            self.assertEqual(broken, outstring);
+            fp = open(os.path.join('test-data', outfn + '.out'), 'rb')
+            outstrings = [unicode(x, 'utf-8') for x in fp.readlines()]
+            fp.close()
+            self.assertEqual(broken, outstrings);
 
     def test_15array(self):
         # break
@@ -147,23 +241,21 @@ class LineBreakTest(unittest.TestCase):
             self.assertEqual(True, False)
 
         # format
-        def fmt(self, stat, string):
+        def format(self, stat, s):
             if stat.startswith('so'):
-                return '    %s>%s' % (stat, unicode(string))
+                return s * 0 + '    ' + stat + '>' + s
             if stat.startswith('eo'):
-                return '<%s\n' % (stat,)
+                return '<' + stat + "\n"
             return None
 
         self.doTestArray([(x, x + '.format') for x in ['fr', 'ja']],
-                         format=fmt)
+                         format = format)
         self.doTestArray([(x, x + '.newline') for x in ['fr', 'ko']],
-                         format="NEWLINE")
+                         format = "NEWLINE")
         self.doTestArray([(x, x + '.newline') for x in ['fr', 'ko']],
-                         format="TRIM")
+                         format = "TRIM")
 
     def test_16regex(self):
-        import re
-
         # Regex matching most of URL-like strings.
         urire = re.compile(r'''(?iux)\b(?:url:)?
         (?:[a-z][-0-9a-z+.]+://|news:|mailto:)
