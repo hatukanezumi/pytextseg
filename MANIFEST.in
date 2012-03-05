@@ -1,11 +1,14 @@
 include MANIFEST.in COPYING CHANGES INSTALL README
 include python_compat.h
+prune sombok
+include sombok/include/sombok.h.in
+include sombok/include/sombok_constants.h
+include sombok/lib/*.c
+include source/conf.py
+include source/*.rst
 include textseg*.c
 include textseg/*.py
 include tests/*.py
-include test-data/*.in
-include test-data/*.out
-include test-data/*.bz
-include test-data/GraphemeBreakTest.txt
-include test-data/LineBreakTest.txt
+recursive-include test-data *.in *.out *.bz
+include test-data/GraphemeBreakTest.txt test-data/LineBreakTest.txt
 

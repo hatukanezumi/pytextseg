@@ -1,5 +1,12 @@
 Changes for pytextseg package
 
+* 0.0.4  2012-03-05
+	- pkg-config support.
+	- If appropriate libraries are not found, use bundled sombok 
+	  sources.
+	- GCStr: added endswith(), ljust(), rjust(), startswith().
+	- Added documentation based on Sphinx.
+
 * 0.0.3  2012-02-25
 	- Added fold().
 	- Added test cases.

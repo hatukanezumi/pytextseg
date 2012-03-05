@@ -1566,7 +1566,7 @@ static PyGetSetDef LineBreak_getseters[] = {
      (setter) LineBreak_set_break_indent,
      PyDoc_STR("\
 Always allows break after SPACEs at beginning of line, \
-a.k.a. indent.  [UAX #14] does not take account of such usage of SPACE.")},
+a.k.a. indent.  [UAX14]_ does not take account of such usage of SPACE.")},
     {"charmax",
      (getter) LineBreak_get_charmax,
      (setter) LineBreak_set_charmax,
@@ -1599,7 +1599,11 @@ enabled, this does not have any effect.")},
      (getter) LineBreak_get_eastasian_context,
      (setter) LineBreak_set_eastasian_context,
      PyDoc_STR("\
-Enable East Asian language/region context.")},
+Enable East Asian language/region context.  \
+If it is true, characters assigned to Line Breaking Class AI will be treated \
+as ideographic (ID) and East_Asian_Width A (ambiguous) will be treated as \
+F (fullwidth).  Otherwise, they are treated as alphabetic (AL) and N \
+(neutral), respectively.")},
     {"eaw",
      (getter) LineBreak_get_eaw,
      (setter) LineBreak_set_eaw,
@@ -1615,19 +1619,20 @@ By default, no tailorings are available.")},
      (setter) LineBreak_set_format,
      PyDoc_STR("\
 Specify the method to format broken lines.\n\
+\n\
 ``\"SIMPLE\"``\n\
     Just only insert newline at arbitrary breaking positions.\n\
 ``\"NEWLINE\"``\n\
-    Insert or replace newline sequences with that specified by `newline`_ \n\
+    Insert or replace newline sequences with that specified by newline \n\
     option, remove SPACEs leading newline sequences or end-of-text.  Then \n\
-    append `newline`_ at end of text if it does not exist.\n\
+    append newline at end of text if it does not exist.\n\
 ``\"TRIM\"``\n\
-    Insert `newline`_ at arbitrary breaking positions.  Remove SPACEs \n\
+    Insert newline at arbitrary breaking positions.  Remove SPACEs \n\
     leading newline sequences.\n\
 ``None``\n\
     Do nothing, even inserting any newlines.\n\
 callable object\n\
-    See \"Formatting Lines\".")},
+    See \":ref:`Formatting Lines`\".")},
     {"hangul_as_al",
      (getter) LineBreak_get_hangul_as_al,
      (setter) LineBreak_set_hangul_as_al,
@@ -1663,14 +1668,15 @@ It may be ``None``.")},
      PyDoc_STR("\
 Add user-defined line breaking behavior(s).  \
 Value shall be list of items described below.\n\
+\n\
 ``\"NONBREAKURI\"``\n\
     Won't break URIs.\n\
 ``\"BREAKURI\"``\n\
     Break URIs according to a rule suitable for printed materials.  For \n\
-    more details see [CMOS], sections 6.17 and 17.11.\n\
-``(``regex object``,`` callable object``)``\n\
+    more details see [CMOS]_, sections 6.17 and 17.11.\n\
+(regex object, callable object)\n\
     The sequences matching regex object will be broken by callable object.  \n\
-    For more details see \"User-Defined Breaking Behaviors\".\n\
+    For more details see \":ref:`User-Defined Breaking Behaviors`\".\n\
 ``None``\n\
     Cancel all methods assigned before.")},
     {"sizing",
@@ -1679,15 +1685,16 @@ Value shall be list of items described below.\n\
      PyDoc_STR("\
 Specify method to calculate size of string.  \
 Following options are available.\n\
+\n\
 ``\"UAX11\"``\n\
     Sizes are computed by columns of each characters.\n\
 ``None``\n\
     Number of grapheme clusters (See documentation of GCStr class) \n\
     contained in the string.\n\
 callable object\n\
-    See \"Calculating String Size\".\n\
+    See \":ref:`Calculating String Size`\".\n\
 \n\
-See also `eaw`_ property.")},
+See also eaw property.")},
     {"urgent",
      (getter) LineBreak_get_urgent,
      (setter) LineBreak_set_urgent,
@@ -1702,14 +1709,14 @@ Following options are available.\n\
 ``None``\n\
     Won't break excessing fragment.\n\
 callable object\n\
-    See \"User-Defined Breaking Behaviors\".")},
+    See \":ref:`User-Defined Breaking Behaviors`\".")},
     {"virama_as_joiner",
      (getter) LineBreak_get_virama_as_joiner,
      (setter) LineBreak_set_virama_as_joiner,
      PyDoc_STR("\
 Virama sign (\"halant\" in Hindi, \"coeng\" in Khmer) and its succeeding \
 letter are not broken.\n\
-\"Default\" grapheme cluster defined by [UAX #29] does not contain this \
+\"Default\" grapheme cluster defined by [UAX29]_ does not contain this \
 feature.")},
     {NULL}			/* Sentinel */
 };
@@ -2455,13 +2462,12 @@ GCStr_copy(PyObject * self, PyObject * args)
 
 PyDoc_STRVAR(GCStr_flag__doc__, "S.flag(offset [, value]) => int\n\
 \n\
-Get and optionally set flag value of offset-th grapheme cluster.  \
+Get and optionally set flag value of offset-th grapheme cluster.\n\
 Flag value is an non-zero integer not greater than 255 and initially is 0.\n\
 Predefined flag values are:\n\
 \n\
 ``ALLOW_BEFORE``\n\
     Allow line breaking just before this grapheme cluster.\n\
-\n\
 ``PROHIBIT_BEFORE``\n\
     Prohibit line breaking just before this grapheme cluster.");
 

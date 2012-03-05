@@ -1,6 +1,7 @@
 # -*- python -*-
 # -*- coding: utf-8 -*-
-"""Constants for textseg package
+"""\
+Constants for textseg package.
 
 _`eawNa`, _`eawN`, _`eawA`, _`eawW`, _`eawH`, _`eawF`, _`eawZ`
     Index values to specify 6 East_Asian_Width properties
@@ -10,17 +11,17 @@ _`lbcBK`, _`lbcCR`, _`lbcLF`, _`lbcNL`, _`lbcSP`, _`lbcOP`, _`lbcCL`, _`lbcCP`, 
     Index values to specify 39 line breaking properties (classes)
     defined by [UAX #14].
 
-*Note*:
-    Property value ``CP`` was introduced by Unicode 5.2.0.
-    Property value ``HL`` and ``CJ`` may be introduced by Unicode 6.1.0.
+    .. note::
+       Property value ``CP`` was introduced by Unicode 5.2.0.
+       Property value ``HL`` and ``CJ`` may be introduced by Unicode 6.1.0.
 
 _`sea_support`
     Flag to determin if word segmentation for South East Asian writing
     systems is enabled.  If this feature was enabled, a non-empty string
     is set.  Otherwise, ``None`` is set.
 
-*N.B.*:
-    Current release supports Thai script of modern Thai language only.
+    .. note::
+       Current release supports Thai script of modern Thai language only.
 
 _`unicode_version`
     A string to specify version of Unicode standard this module refers.

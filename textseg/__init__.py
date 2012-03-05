@@ -2,28 +2,17 @@
 # -*- coding: utf-8 -*-
 """Text segmentation module
 
-Functions:
-    fill()
-
-    fold()
-
-    wrap()
-
-Classes:
-    GCStr
-
-    LineBreak
-
-Submodule:
-    Consts: see documentation for textseg.Consts.
+The textseg module provides functions fill() and wrap(), Unicode-aware
+alternatives for those of textwrap standard module.  It also provides
+classes LineBreak and GCStr, lower level interfaces for text segmentation.
 """
 
 # Copyright (C) 2012 Hatuka*nezumi - IKEDA Soji.
 
-__all__ = ['LineBreak', 'GCStr', 'fill', 'fold', 'wrap']
+__all__ = ['Consts', 'GCStr', 'LineBreak', 'fill', 'fold', 'wrap']
 
-import _textseg
 import re
+import _textseg
 from textseg.Consts import lbcBK, lbcCR, lbcLF, lbcNL, lbcSP, eawN
 
 try:
@@ -95,7 +84,7 @@ fill(text[, options...]) -> unicode
 
 Reformat the single paragraph in ``text`` to fit in lines of no more than 
 ``width`` columns, and return a new string containing the entire wrapped 
-paragraph.'''
+paragraph.  Optional named arguments will be passed to wrap() function.'''
 
     return unicode("\n").join(wrap(text, **kwds))
 
@@ -172,10 +161,11 @@ _specialBreakRe = re.compile('([' + unichr(0xB) + unichr(0xC) +
 
 def fold(string, method = 'plain', tabsize = 8, **kwds):
     """\
-fold() folds lines of string string and returns it.
+Folds lines of string *string* and returns it.
+
 Surplus SPACEs and horizontal tabs at end of line are removed,
-newline sequences are replaced by that specified by optional newline argument
-and newline is appended at end of text if it does not exist.
+newline sequences are replaced by that specified by optional newline
+argument and newline is appended at end of text if it does not exist.
 Horizontal tabs are treated as tab stops according to tabsize argument.
 
 Following options may be specified for ``method`` argument.
@@ -183,10 +173,8 @@ Following options may be specified for ``method`` argument.
 ``"fixed"``
     Lines preceded by ">" won't be folded.
     Paragraphs are separated by empty line.
-
 ``"flowed"``
     "Format=Flowed; DelSp=Yes" formatting defined by RFC 3676.
-
 ``"plain"``
     Default method.  All lines are folded.
 """
@@ -235,9 +223,10 @@ Following options may be specified for ``method`` argument.
 class LineBreak(_textseg.LineBreak):
     '''\
 LineBreak class performs Line Breaking Algorithm described in Unicode 
-Standards Annex #14 [UAX #14]. East_Asian_Width informative properties 
-defined by Annex #11 [UAX #11] will be concerned to determine breaking 
-positions.'''
+Standards Annex #14 [UAX14]_. East_Asian_Width informative properties 
+defined by Annex #11 [UAX11]_ will be concerned to determine breaking 
+positions.
+'''
 
     MANDATORY = 4
     DIRECT = 3
@@ -279,7 +268,7 @@ class GCStr(_textseg.GCStr):
     '''\
 GCStr class treats Unicode string as a sequence of 
 *extended grapheme clusters* defined by Unicode Standard Annex #29 
-[UAX #29].
+[UAX29]_.
 
 **Grapheme cluster** is a sequence of Unicode character(s) that consists 
 of one **grapheme base** and optional **grapheme extender** and/or 
@@ -293,32 +282,64 @@ of one **grapheme base** and optional **grapheme extender** and/or
         '''\
 GCStr(string[, lb]) -> GCStr
 
-Create new grapheme cluster string (GCStr object) from Unicode string 
+Create new grapheme cluster string (GCStr object) from Unicode string
 ``string``.
 
-Optional LineBreak object ``lb`` controls breaking features.  Following 
-properties of LineBreak object affect new GCStr object:
+Optional LineBreak object ``lb`` controls breaking features.  Following
+properties of LineBreak object affect new GCStr object.
 
-    * `eastasian_context`_
-
-    * `eaw`_
-
-    * `lbc`_
-
-    * `legacy_cm`_
-
-    * `virama_as_joiner`_'''
+    - eastasian_context
+    - eaw
+    - lbc
+    - legacy_cm
+    - virama_as_joiner
+'''
 
         if lb is None:
             lb = LineBreak()
         return _textseg.GCStr.__new__(cls, string, lb=lb)
 
+    '''
+    def center(self, width, fillchar=' '):
+        """\
+S.center(width[, fillchar]) -> GCStr
+
+Return S centered in a string of width columns. Padding is
+done using the specified fill character (default is a space)"""
+
+        fillchar = self * 0 + fillchar
+        if width < self.cols + fillchar.cols:
+            return self
+
+        marg = (width - self.cols) // fillchar.cols
+        right = marg // 2 + (marg & (width // fillchar.cols) & 1)
+        return fillchar * (marg - right) + self + fillchar * right
+    '''
+
+    def endswith(self, suffix, start = 0, end = None):
+        '''\
+S.endswith(suffix[, start[, end]]) -> bool
+
+Return True if S ends with the specified suffix, False otherwise.
+With optional start, test S beginning at that position.
+With optional end, stop comparing S at that position.
+suffix can also be a tuple of strings to try.'''
+        if isinstance(suffix, tuple):
+            pass
+        elif not isinstance(suffix, unicode):
+            prefix = unicode(suffix)
+
+        if end is None:
+            return unicode(self[start:]).endswith(suffix)
+        else:
+            return unicode(self[start:end]).endswith(suffix)
+
     def expandtabs(self, tabsize=8):
         '''\
 S.expandtabs([tabsize]) -> GCStr
 
-Return a copy of ``S`` where all tab characters are expanded using spaces.
-If ``tabsize`` is not given, a tab size of 8 columns is assumed.'''
+Return a copy of S where all tab characters are expanded using spaces.
+If *tabsize* is not given, a tab size of 8 columns is assumed.'''
 
         ret = self * 0
         j = 0
@@ -336,22 +357,56 @@ If ``tabsize`` is not given, a tab size of 8 columns is assumed.'''
                 j += c.cols
         return ret
 
+    def ljust(self, width, fillchar=' '):
+        """\
+S.ljust(width[, fillchar]) -> GCStr
+
+Return S left-justified in a grapheme cluster string of width columns.
+Padding is done using the specified fill character (default is a space)."""
+
+        fillchar = self * 0 + fillchar
+        if width < self.cols + fillchar.cols:
+            return self
+        return self + fillchar * ((width - self.cols) // fillchar.cols)
+
+    def rjust(self, width, fillchar=' '):
+        """\
+S.rjust(width[, fillchar]) -> GCStr
+
+Return S right-justified in a string of width columns. Padding is\n\
+done using the specified fill character (default is a space)."""
+
+        fillchar = self * 0 + fillchar
+        if width < self.cols + fillchar.cols:
+            return self
+        return fillchar * ((width - self.cols) // fillchar.cols) + self
+
     def startswith(self, prefix, start = 0, end = None):
         '''\
-        '''
+S.startswith(prefix[, start[, end]]) -> bool
+
+Return True if S starts with the specified prefix, False otherwise.
+With optional start, test S beginning at that position.
+With optional end, stop comparing S at that position.
+prefix can also be a tuple of strings to try.'''
         if isinstance(prefix, tuple):
             pass
         elif not isinstance(prefix, unicode):
             prefix = unicode(prefix)
 
         if end is None:
-            return unicode(self).startswith(prefix, start)
+            return unicode(self[start:]).startswith(prefix)
         else:
-            return unicode(self).startswith(prefix, start, end)
+            return unicode(self[start:end]).startswith(prefix)
 
     def translate(self, table):
         '''\
-        '''
-        o = self * 0
-        return o + unicode(self).translate(table)
+S.translate(table) -> GCStr
+
+Return a copy of the GCStr object S, where all characters have been mapped
+through the given translation table, which must be a mapping of
+Unicode ordinals to Unicode ordinals, strings, or None.
+Unmapped characters are left untouched. Characters mapped to None
+are deleted.'''
+        return self * 0 + unicode(self).translate(table)
 

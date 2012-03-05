@@ -8,25 +8,33 @@ Prerequisites
 Python 2.3 or later is required.  Python 3.x including CPython 3.3a is
 also supported.
 
-Sombok library package 2.1.0 or later is required.  If you had not been 
-got it, build it by yourself.
+Sombok library package 2.1.1 or later is required.  If you had not 
+got it, bundled sources are used.
+
     http://sourceforge.net/projects/linefold/files/sombok/
 
 Sombok needs LibThai library package to perform Thai word segmentation:
-    http://linux.thai.net/projects/libthai
+
+    http://linux.thai.net/projects/libthai/
 
 Install
 =======
 
-Get pytextseg from:
+To install pytextseg, run::
+
+    pip install pytextseg
+
+or::
+
+    easy_install pytextseg
+
+Or, download source tarball from
 
   http://pypi.python.org/pypi/pytextseg/
 
-Extract tarball then run as below.
+and extract it, then run::
 
-  $ python setup.py build
-  $ python setup.py test        [this may work with setuptools.]
-  $ python setup.py install
-
-$$
+    python setup.py build
+    python setup.py test
+    python setup.py install
 
