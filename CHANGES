@@ -1,26 +1,50 @@
-Changes for pytextseg package
+===================
+pytextseg Changelog
+===================
 
-* 0.0.4  2012-03-05
-	- pkg-config support.
-	- If appropriate libraries are not found, use bundled sombok 
-	  sources.
-	- GCStr: added endswith(), ljust(), rjust(), startswith().
-	- Added documentation based on Sphinx.
+Beta
+====
 
-* 0.0.3  2012-02-25
-	- Added fold().
-	- Added test cases.
+0.1.0 - 2012-03-20
+------------------
+- License Change:
+  From now on, pytextseg is distributed under dual license of GPL *and*
+  Artistic License.
+- Consts: added predefined tailoring constants.
+- GCStr.center(): new.
+- GCStr.translate(): removed.
+- GCStr.lbcext(): fix: returned -1 when grapheme extender is CM.
+- LineBreak: fix: aware of object types to be used in callback functions.
+- LineBreak.breakingRule(): new.
+- LineBreakException: new.
+- unfold(): new.
 
-* 0.0.2  2012-02-10
-	- Switched to CPython 3.3 style Unicode handling (PEP 393).
-	  Python 2.x including "narrow" Unicode implenentation is still 
-	  supported.
+Pre-Alpha to Alpha
+==================
 
-* 0.0.1  2012-02-04
-	- "Wide" Unicode implementation only.
-	- Supported Python 3.x.
+0.0.4 - 2012-03-05
+------------------
+- pkg-config support.
+- If appropriate libraries are not found, use bundled sombok sources.
+- GCStr: added endswith(), ljust(), rjust(), startswith().
+- Added documentation based on Sphinx.
 
-* 0.0.0  2012-01-29
-	- 
+0.0.3 - 2012-02-25
+------------------
+- Added fold().
+- Added test cases.
 
-$$
+0.0.2 - 2012-02-10
+------------------
+- Switched to CPython 3.3 style Unicode handling (PEP 393).
+  Python 2.x including "narrow" Unicode implenentation is still supported.
+
+0.0.1 - 2012-02-04
+------------------
+- "Wide" Unicode implementation only.
+- Supported Python 3.x.
+
+0.0.0 - 2012-01-29
+------------------
+- Private version.
+

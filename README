@@ -2,12 +2,13 @@
 pytextseg
 =========
 
-The pytextseg package provides functions fill() and wrap(), Unicode-aware
-alternatives for those of textwrap standard module.  It also provides
-classes LineBreak and GCStr, lower level interfaces for text segmentation.
+The pytextseg package provides functions fill() and wrap(),
+Unicode-aware alternatives for those of :mod:`textwrap` standard module,
+and fold() and unfold(), functions mainly focus on plain text messages
+such as e-mail.
 
-:Notice: This is development release.  You might not want to use it on 
-         production system.
+It also provides lower level interfaces for text segmentation: LineBreak
+class for line breaking; GCStr class for grapheme cluster segmentation.
 
 Install
 =======
@@ -25,18 +26,20 @@ Perl
 License
 =======
 
-pytextseg - Unicode Text Segmentation Package for Python.
+pytextseg is Copyright (C) 2012, by Hatuka*nezumi - IKEDA Soji.
 
-Copyright (C) 2012 by Hatuka*nezumi - IKEDA Soji.
+It is free software; you can redistribute it and/or modify it under the
+terms of either:
 
-This file is part of the pytextseg package.  This program is free
-software; you can redistribute it and/or modify it under the terms of
-the GNU General Public License as published by the Free Software
-Foundation; either version 2 of the License, or (at your option) any
-later version.  This program is distributed in the hope that it will
-be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
-of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-COPYING file for more details.
+a) the GNU General Public License as published by the Free Software
+   Foundation; either version 2, or (at your option) any later version,
+   or
+
+b) the "Artistic License".
+
+----
+
+See the COPYING and the ARTISTIC files for more details.
 
 Author
 ======

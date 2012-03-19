@@ -8,12 +8,15 @@ Prerequisites
 Python 2.3 or later is required.  Python 3.x including CPython 3.3a is
 also supported.
 
+C compiler is required to build this Python extension.
+
 Sombok library package 2.1.1 or later is required.  If you had not 
 got it, bundled sources are used.
 
     http://sourceforge.net/projects/linefold/files/sombok/
 
-Sombok needs LibThai library package to perform Thai word segmentation:
+Sombok optionally needs LibThai library package to perform Thai word 
+segmentation:
 
     http://linux.thai.net/projects/libthai/
 

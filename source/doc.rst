@@ -8,15 +8,58 @@ textseg module
 ==============
 
 .. automodule:: textseg
-   :members: fill, wrap, fold, Consts
+
+   If you are inpatient, see ":ref:`Functions`".
+
+   .. _`Functions`:
+
+   Functions
+   ---------
+
+   .. autofunction:: fold
+
+   .. autofunction:: unfold
+
+   textwrap Style Functions
+   ^^^^^^^^^^^^^^^^^^^^^^^^
+
+   .. autofunction:: fill
+
+   .. autofunction:: wrap
 
    GCStr class
    -----------
    .. autoclass:: GCStr
-      :members:
-      :inherited-members:
+      :members: chars,
+                cols,
+                lbc,
+                lbcext
 
       .. automethod:: __new__
+
+      .. automethod:: center
+
+      .. automethod:: endswith
+
+      .. automethod:: expandtabs
+
+      .. .. automethod:: flag(offset[, value])
+
+      .. automethod:: join
+
+      .. automethod:: ljust
+
+      .. automethod:: rjust
+
+      .. automethod:: splitlines
+
+      .. automethod:: startswith
+
+      .. method:: translate(table)
+      .. deprecated:: 0.1.0
+         See ":ref:`Methods not Supported`".
+
+      **String Operations**
 
       Most of operations for string object are available on GCStr object.
 
@@ -70,28 +113,89 @@ textseg module
 
       (2) One of operands may be Unicode string.
 
-      (3) Note that number of columns (see cols) or grapheme clusters
+      (3) Note that number of columns (see :attr:`cols`) or grapheme clusters
           (see len()) of resulting grapheme cluster string is not always 
           equal to sum of both strings.
 
-      (4) See also chars and cols properties.
+      (4) See also :attr:`chars` and :attr:`cols` attributes.
 
       (5) Comparisons are performed by Unicode string value, not concerning
           grapheme cluster boundaries.
 
-      |
+      GCStr object can not be operand of :mod:`re` regular expression
+      operations.
+
+      .. _`Methods not Supported`:
+
+      **Methods not Supported**
+
+      Some string methods are not supported since they break grapheme
+      cluster boundaries.  Instead, use methods of stringified objects.
+      For example::
+
+          # For Python 3
+          result = gcs * 0 + str(gcs).translate(table)
+          # For Python 2
+          result = gcs * 0 + unicode(gcs).translate(table)
+
+      ``gcs * 0 + ...`` is a convenient way to recalculate grapheme
+      clusters.
+
+      **Instance Attributes**
+
+      These attributes are read-only.
 
 
    LineBreak class
    ---------------
    .. autoclass:: LineBreak
-      :members:
-      :inherited-members:
+      :members: break_indent,
+                charmax,
+                complex_breaking,
+                eastasian_context,
+                eaw,
+                format,
+                hangul_as_al,
+                lbc,
+                legacy_cm,
+                minwidth,
+                newline,
+                prep,
+                sizing,
+                urgent,
+                virama_as_joiner,
+                width
 
       .. automethod:: __init__
 
-   Functions
+      .. automethod:: breakingRule(before, after)
+
+      .. automethod:: wrap(text)
+
+      **Class Attributes**
+
+      .. attribute:: DEFAULTS
+
+         Dictionary containing default values of instance attributes.
+
+      .. attribute:: MANDATORY
+      .. attribute:: DIRECT
+      .. attribute:: INDIRECT
+      .. attribute:: PROHIBITED
+
+         Four values to specify line breaking behaviors:
+         Mandatory break; Both direct break and indirect break are allowed;
+         Indirect break is allowed but direct break is prohibited;
+         Prohibited break.
+
+      **Instance Attributes**
+
+      About default values of these attributes see :meth:`__init__`.
+
+   Exception
    ---------
+   .. autoexception:: LineBreakException
+
 
 textseg.Consts module
 =====================
@@ -99,4 +203,6 @@ textseg.Consts module
 .. automodule:: textseg.Consts
    :members:
    :inherited-members:
+
+   See also ":ref:`Tailoring Character Properties`".
 

@@ -1,6 +1,13 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
+'''
+Copyright (C) 2012 by Hatuka*nezumi - IKEDA Soji.
 
+This file is part of the pytextseg package.  This program is free
+software; you can redistribute it and/or modify it under the terms of
+either the GNU General Public License or the Artistic License, as
+specified in the README file.
+'''
 import os
 import re
 import unittest

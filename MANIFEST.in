@@ -1,9 +1,15 @@
 include MANIFEST.in COPYING CHANGES INSTALL README
 include python_compat.h
 prune sombok
+include sombok/ARTISTIC
+include sombok/COPYING
 include sombok/include/sombok.h.in
 include sombok/include/sombok_constants.h
 include sombok/lib/*.c
+include sombok/README
+include sombok/README.ja_JP
+include sombok/UNICODE
+include sombok/VERSION
 include source/conf.py
 include source/*.rst
 include textseg*.c

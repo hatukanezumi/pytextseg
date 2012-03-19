@@ -1,11 +1,19 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
+'''
+Copyright (C) 2012 by Hatuka*nezumi - IKEDA Soji.
 
+This file is part of the pytextseg package.  This program is free
+software; you can redistribute it and/or modify it under the terms of
+either the GNU General Public License or the Artistic License, as
+specified in the README file.
+'''
 import os
 import re
 import unittest
-from textseg import LineBreak, fill, fold
-from textseg.Consts import eawZ, eawN, lbcID, sea_support
+from textseg import LineBreak, fill, fold, unfold
+from textseg.Consts import eawZ, eawN, lbcID, sea_support, \
+                           AMBIGUOUS_ALPHABETICS, KANA_NONSTARTERS
 
 try:
     unicode, unichr
@@ -32,10 +40,6 @@ LineBreak.DEFAULTS = {
     'virama_as_joiner': True,
     'width': 76,
 }
-
-SMALL_KANA = unistr([0x3041, 0x3043, 0x3045, 0x3047, 0x3049, 0x3063, 0x3083, 0x3085, 0x3087, 0x308E, 0x3095, 0x3096, 0x30A1, 0x30A3, 0x30A5, 0x30A7, 0x30A9, 0x30C3, 0x30E3, 0x30E5, 0x30E7, 0x30EE, 0x30F5, 0x30F6])
-
-AMBIG_LATIN = unistr([0x00C6, 0x00D0, 0x00D8, 0x00DE, 0x00DF, 0x00E0, 0x00E1, 0x00E6, 0x00E8, 0x00E9, 0x00EA, 0x00EC, 0x00ED, 0x00F0, 0x00F2, 0x00F3, 0x00F8, 0x00F9, 0x00FA, 0x00FC, 0x00FE, 0x0101, 0x0111, 0x0113, 0x011B, 0x0126, 0x0127, 0x012B, 0x0131, 0x0132, 0x0133, 0x0138, 0x013F, 0x0140, 0x0141, 0x0142, 0x0144, 0x0148, 0x0149, 0x014A, 0x014B, 0x014D, 0x0152, 0x0153, 0x0166, 0x0167, 0x016B, 0x01CE, 0x01D0, 0x01D2, 0x01D4, 0x01D6, 0x01D8, 0x01DA, 0x01DC, 0x0251, 0x0261])
 
 class LineBreakTest(unittest.TestCase):
 
@@ -125,7 +129,7 @@ class LineBreakTest(unittest.TestCase):
     def test_03ns(self):
         self.doTest([('ja-k', 'ja-k')], width=72)
         self.doTest([('ja-k', 'ja-k.ns')],
-                    lbc={ SMALL_KANA: lbcID }, width=72)
+                    lbc={ KANA_NONSTARTERS: lbcID }, width=72)
 
     def test_04fold(self):
         for lang in ('ja', 'fr', 'quotes'):
@@ -135,12 +139,11 @@ class LineBreakTest(unittest.TestCase):
                 folded[meth] = fold(instring, meth)
                 outstring = self.readText(lang + '.' + meth + '.out')
                 self.assertEqual(folded[meth], outstring)
-            '''
             for meth in ['fixed', 'flowed']:
-                outstring = unfold(folded[meth], meth)
-                instring = self.readText(lang + '.' + 'norm.in')
-                self.assertEqual(outstring, instring)
-            '''
+                if lang == 'quotes':
+                    outstring = unfold(folded[meth], meth)
+                    instring = self.readText(lang + '.' + 'norm.in')
+                    self.assertEqual(outstring, instring)
 
     def test_05urgent(self):
         self.doTest([('ecclesiazusae', 'ecclesiazusae')]);
@@ -160,7 +163,7 @@ class LineBreakTest(unittest.TestCase):
     def test_06context(self):
         self.doTest([('fr', 'fr.ea')], eastasian_context=True)
         self.doTest([('fr', 'fr')], eastasian_context=True,
-                    eaw={ AMBIG_LATIN: eawN })
+                    eaw={ AMBIGUOUS_ALPHABETICS: eawN })
 
     def test_07sea(self):
         if sea_support is not None:
@@ -197,14 +200,12 @@ class LineBreakTest(unittest.TestCase):
             outstring = self.readText(lang + '.wrap.out').expandtabs()
             self.assertEqual(folded, outstring)
 
-    '''
     def test_13flowedsp(self):
         for lang in ['flowedsp']:
             instring = self.readText(lang + '.in')
             unfolded = unfold(instring, 'flowedsp');
             outstring = self.readText(lang + '.out')
             self.assertEqual(unfolded, outstring)
-    '''
 
     def test_14sea_al(self):
         self.doTest([('th', 'th.al')], complex_breaking=False)

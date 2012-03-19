@@ -1,23 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-#
-# Copyright (C) 2012 Hatuka*nezumi - IKEDA Soji
-#
-# This file is part of pytextseg.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, see <http://www.gnu.org/licenses/>.
+'''
+setup.py - Setup script for pytextseg Python package
 
+Copyright (C) 2012 by Hatuka*nezumi - IKEDA Soji.
+
+This file is part of the pytextseg package.  This program is free
+software; you can redistribute it and/or modify it under the terms of
+either the GNU General Public License or the Artistic License, as
+specified in the README file.
+'''
 import os
 import re
 from glob import glob
@@ -38,7 +30,7 @@ except ImportError:
 ###############################################################################
 
 SOMBOK_VERSION = '2.1.1'
-UNICODE_VERSION = '6.1.0'
+UNICODE_VERSION = '6.1.0' # default for bundled source
 LIBTHAI_VERSION = '0.1.9'
 PKG_CONFIG = os.environ.get('PKG_CONFIG', 'pkg-config')
 
@@ -61,6 +53,12 @@ def pkg_config(*packages, **kwds):
         kwds.setdefault(flag_map.get(token[:2]), []).append(token[2:])
     return kwds
 
+def pkg_modversion(pkg):
+    stat, out = getstatusoutput("%s --modversion '%s'" % (PKG_CONFIG, pkg))
+    if stat >> 8:
+        raise RuntimeError(out)
+    return out.strip()
+
 ###############################################################################
 # CUSTOMIZE
 ###############################################################################
@@ -71,18 +69,34 @@ class my_build_clib(build_clib):
         h = open(os.path.join(include_dir, 'sombok.h.in'), 'rt').read()
         h = h.replace('#ifdef HAVE_CONFIG_H', '#if 1')
         try:
-            pkg_config('libthai >= %s' % LIBTHAI_VERSION)
-            print("# libthai support is enabled.")
+            libthai = pkg_modversion('libthai >= %s' % LIBTHAI_VERSION)
+            if not libthai:
+                libthai = 'unknown'
+            print("# Use libthai %s" % libthai)
             h = h.replace('"config.h"', '''\
 <Python.h>
-#    define USE_LIBTHAI "libthai-unknown"''')
+#    define USE_LIBTHAI "libthai/%s"''' % libthai)
         except RuntimeError:
             print("# libthai support is disabled.  You might want to install it. and to try again.")
             h = h.replace('"config.h"', '''\
 <Python.h>
 #    undef USE_LIBTHAI''')
         h = h.replace('@SOMBOK_UNICHAR_T@', 'Py_UCS4')
-        h = h.replace('@PACKAGE_VERSION@', 'bundled')
+        fp = None
+        try:
+            try:
+                fp = open(os.path.join('sombok', 'VERSION'), 'rt')
+                sombok = fp.read().strip()
+                if not sombok:
+                    raise
+            except:
+                sombok = 'bundled'
+        finally:
+            if fp:
+                fp.close()
+        print("# Use bundled sombok %s with Unicode %s" % \
+              (sombok, UNICODE_VERSION))
+        h = h.replace('@PACKAGE_VERSION@', sombok)
         h = h.replace('@SOMBOK_UNICHAR_T_IS_WCHAR_T@', '')
         h = h.replace('@SOMBOK_UNICHAR_T_IS_UNSIGNED_INT@', '')
         h = h.replace('@SOMBOK_UNICHAR_T_IS_UNSIGNED_LONG@', '')
@@ -108,6 +122,18 @@ if __name__ == '__main__':
     except RuntimeError:
         from distutils.sysconfig import get_python_inc
 
+        fp = None
+        try:
+            try:
+                fp = open(os.path.join('sombok', 'UNICODE'), 'rt')
+                uv = fp.read().strip()
+                if uv:
+                    UNICODE_VERSION = uv
+            except:
+                pass
+        finally:
+            if fp:
+                fp.close()
         sources = [s for s in glob(os.path.join('sombok', 'lib', '*.c'))
                      if not re.search(r'[0-9][.0-9]+\.c', s)]
         sources.append(os.path.join('sombok', 'lib', '%s.c' % UNICODE_VERSION))
@@ -120,11 +146,14 @@ if __name__ == '__main__':
                           },
                          ))
         ext_config['include_dirs'].append(include_dir)
+    else:
+        print("Use sombok %s" % \
+              pkg_modversion('sombok >= %s' % SOMBOK_VERSION))
 
     setup(
         name="pytextseg",
-        version='0.0.4',
-        license="GNU General Public License (GPL)",
+        version='0.1.0',
+        license="GNU General Public License (GPL) or Artistic License",
         description='Python module for text segmentation.',
         long_description=open('README', 'r').read(),
         author='Hatuka*nezumi - IKEDA Soji',
@@ -133,11 +162,15 @@ if __name__ == '__main__':
         download_url = '',
         platforms=["any"],
         classifiers=[
-            "Development Status :: 3 - Alpha",
+            "Development Status :: 4 - Beta",
 	    "Environment :: Other Environment",
 	    "Intended Audience :: Developers",
 	    "License :: OSI Approved :: GNU General Public License (GPL)",
+	    "License :: OSI Approved :: Artistic License",
 	    "Operating System :: OS Independent",
+	    "Operating System :: POSIX",
+	    "Operating System :: MacOS :: MacOS X",
+	    "Operating System :: Microsoft :: Windows",
 	    "Programming Language :: Python",
 	    "Programming Language :: Python :: 2",
 	    "Programming Language :: Python :: 3",
