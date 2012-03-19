@@ -20,7 +20,7 @@ except NameError:
     unicode = str
     unichr = chr
 
-def unistr(list):
+def unistr(*list):
     return ''.join([unichr(c) for c in list])
 
 class GCStrTest(unittest.TestCase):
@@ -60,7 +60,7 @@ class GCStrTest(unittest.TestCase):
             s = ''.join([unichr(int(c, 16))
                          for c in opRe.split(l)
                          if len(c) > 0])
-            b = unistr([0x20, 0xF7, 0x20]).join([unistr([0x20, 0xD7, 0x20]).join(['%04X' % ord(c) for c in unicode(x)])
+            b = unistr(0x20, 0xF7, 0x20).join([unistr(0x20, 0xD7, 0x20).join(['%04X' % ord(c) for c in unicode(x)])
                                                  for x in GCStr(s)])
             try:
                 self.assertEqual(b, l)
@@ -77,10 +77,10 @@ class GCStrTest(unittest.TestCase):
             raise AssertionError("%d of %d subtests are failed." % (errs, tests))
 
     def test_10gcstring01(self):
-        s = unistr([0x300, 0, 0x0D, 0x41, 0x300, 0x301, 0x3042, 0xD, 0xA,
-                    0xAC00, 0x11A8])
-        r = unistr([0xAC00, 0x11A8, 0xD, 0xA, 0x3042, 0x41, 0x300, 0x301,
-                    0xD, 0, 0x300])
+        s = unistr(0x300, 0, 0x0D, 0x41, 0x300, 0x301, 0x3042, 0xD, 0xA,
+                   0xAC00, 0x11A8)
+        r = unistr(0xAC00, 0x11A8, 0xD, 0xA, 0x3042, 0x41, 0x300, 0x301,
+                   0xD, 0, 0x300)
         string = GCStr(s)
         self.assertEqual(len(string), 7)
         self.assertEqual(string.cols, 5)
@@ -90,18 +90,18 @@ class GCStrTest(unittest.TestCase):
         self.assertEqual(r, ''.join(l))
 
     def test_10gcstring02(self):
-        string = GCStr(unistr([0x1112, 0x1161,
-                               0x11AB, 0x1100, 0x1173, 0x11AF]))
+        string = GCStr(unistr(0x1112, 0x1161,
+                              0x11AB, 0x1100, 0x1173, 0x11AF))
         self.assertEqual(len(string), 2)
         self.assertEqual(string.cols, 4)
         self.assertEqual(string.chars, 6)
         self.assertEqual(string, string.__copy__())
 
     def test_10gcstring03(self):
-        string = GCStr(unistr([0x1112, 0x1161,
-                               0x11AB, 0x1100, 0x1173, 0x11AF]))
-        s1 = unistr([0x1112, 0x1161])
-        s2 = unistr([0x11AB, 0x1100, 0x1173, 0x11AF])
+        string = GCStr(unistr(0x1112, 0x1161,
+                              0x11AB, 0x1100, 0x1173, 0x11AF))
+        s1 = unistr(0x1112, 0x1161)
+        s2 = unistr(0x11AB, 0x1100, 0x1173, 0x11AF)
         g1 = GCStr(s1)
         g2 = GCStr(s2)
         self.assertEqual(g1 + g2, string)
@@ -122,28 +122,28 @@ class GCStrTest(unittest.TestCase):
         self.assertEqual(g1, string)
 
     def test_10gcstring04(self):
-        string = GCStr(unistr([0x1112, 0x1161,
-                               0x11AB, 0x1100, 0x1173, 0x11AF]))
+        string = GCStr(unistr(0x1112, 0x1161,
+                              0x11AB, 0x1100, 0x1173, 0x11AF))
         self.assertEqual(unicode(string[1:]),
-                         unistr([0x1100, 0x1173, 0x11AF]))
+                         unistr(0x1100, 0x1173, 0x11AF))
         self.assertEqual(unicode(string[-1:]),
-                         unistr([0x1100, 0x1173, 0x11AF]))
+                         unistr(0x1100, 0x1173, 0x11AF))
         self.assertEqual(string[0:-1],
-                         unistr([0x1112, 0x1161, 0x11AB]))
+                         unistr(0x1112, 0x1161, 0x11AB))
         string[-1:] = "A"
         self.assertEqual(unicode(string),
-                         unistr([0x1112, 0x1161, 0x11AB, 0x41]))
+                         unistr(0x1112, 0x1161, 0x11AB, 0x41))
         string[2:] = "B"
         self.assertEqual(string,
-                         unistr([0x1112, 0x1161, 0x11AB, 0x41, 0x42]))
+                         unistr(0x1112, 0x1161, 0x11AB, 0x41, 0x42))
         string[0:0] = "C"
         self.assertEqual(unicode(string),
-                         unistr([0x43, 0x1112, 0x1161, 0x11AB, 0x41, 0x42]))
+                         unistr(0x43, 0x1112, 0x1161, 0x11AB, 0x41, 0x42))
 
     def test_10gcstring05(self):
-        s = [unistr([0x0300]), unistr([0x00]), unistr([0x0D]),
-             unistr([0x41, 0x0300, 0x0301]), unistr([0x3042]),
-             unistr([0x0D, 0x0A]), unistr([0xAC00, 0x11A8])]
+        s = [unistr(0x0300), unistr(0x00), unistr(0x0D),
+             unistr(0x41, 0x0300, 0x0301), unistr(0x3042),
+             unistr(0x0D, 0x0A), unistr(0xAC00, 0x11A8)]
         string = GCStr(''.join(s))
         self.assertEqual([unicode(c) for c in string], s)
 
@@ -155,7 +155,7 @@ class GCStrTest(unittest.TestCase):
             self.assertEqual(len(g), 1)
             self.assertEqual(g.lbc, lbcGL)
 
-        g = GCStr(unistr([0xC2, 0xA0]), lb)
+        g = GCStr(unistr(0xC2, 0xA0), lb)
         self.assertEqual(len(g), 2)
         self.assertEqual(g.lbc, lbcAL)
 
@@ -164,7 +164,7 @@ class GCStrTest(unittest.TestCase):
             self.assertEqual(len(g), 1)
             self.assertEqual(g.cols, 2)
 
-        g = GCStr(unistr([0xC3, 0x97]), lb)
+        g = GCStr(unistr(0xC3, 0x97), lb)
         self.assertEqual(len(g), 2)
         self.assertEqual(g.cols, 1)
 

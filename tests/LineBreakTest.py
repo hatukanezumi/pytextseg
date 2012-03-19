@@ -21,13 +21,13 @@ except NameError:
     unicode = str
     unichr = chr
 
-def unistr(list):
+def unistr(*list):
     return ''.join([unichr(c) for c in list])
 
 LineBreak.DEFAULTS = {
     'charmax': 998,
     'eastasian_context': False,
-    'eaw': { unistr([0x302E, 0x302F]): eawZ },
+    'eaw': { unistr(0x302E, 0x302F): eawZ },
     'format': 'SIMPLE',
     'hangul_as_al': False,
     'lbc': None,
@@ -101,7 +101,7 @@ class LineBreakTest(unittest.TestCase):
             s = ''.join([unichr(int(c, 16))
                          for c in opRe.split(l)
                          if len(c) > 0])
-            b = unistr([0x20, 0xF7, 0x20]).join([unistr([0x20, 0xD7, 0x20]).join(['%04X' % ord(c) for c in unicode(x)])
+            b = unistr(0x20, 0xF7, 0x20).join([unistr(0x20, 0xD7, 0x20).join(['%04X' % ord(c) for c in unicode(x)])
                                                 for x in lb.wrap(s)])
             try:
                 self.assertEqual(b, l)

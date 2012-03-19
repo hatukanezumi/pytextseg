@@ -4,10 +4,10 @@
 pytextseg's documentation
 =========================
 
-The pytextseg package provides functions :func:`fill<textseg.fill>`
-and :func:`wrap<textseg.wrap>`, Unicode-aware alternatives for those of
-:mod:`textwrap` standard module,
-and :func:`fold<textseg.fold>` and :func:`unfold<textseg.unfold>`,
+The pytextseg package provides functions to wrap plain texts:
+:func:`fill<textseg.fill>` and :func:`wrap<textseg.wrap>` are
+Unicode-aware alternatives for those of :mod:`textwrap` standard module;
+:func:`fold<textseg.fold>` and :func:`unfold<textseg.unfold>` are
 functions mainly focus on plain text messages such as e-mail.
 
 It also provides lower level interfaces for text segmentation:

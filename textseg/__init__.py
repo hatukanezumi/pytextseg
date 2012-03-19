@@ -1,10 +1,10 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-The pytextseg package provides functions :func:`fill` and :func:`wrap`,
-Unicode-aware alternatives for those of :mod:`textwrap` standard module,
-and :func:`fold` and :func:`unfold`, functions mainly focus on plain
-text messages such as e-mail.
+The pytextseg package provides functions to wrap plain texts:
+:func:`fill` and :func:`wrap` are Unicode-aware alternatives for those
+of :mod:`textwrap` standard module; :func:`fold` and :func:`unfold` are
+functions mainly focus on plain text messages such as e-mail.
 
 It also provides lower level interfaces for text segmentation:
 :class:`LineBreak` class for line breaking; :class:`GCStr` class for
