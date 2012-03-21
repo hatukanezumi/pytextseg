@@ -4,8 +4,8 @@ pytextseg
 
 The pytextseg package provides functions to wrap plain texts:
 fill() and wrap() are Unicode-aware alternatives for those of
-:mod:`textwrap` standard module; fold() and unfold() are functions
-mainly focus on plain text messages such as e-mail.
+textwrap standard module; fold() and unfold() are functions mainly focus
+on plain text messages such as e-mail.
 
 It also provides lower level interfaces for text segmentation: LineBreak
 class for line breaking; GCStr class for grapheme cluster segmentation.

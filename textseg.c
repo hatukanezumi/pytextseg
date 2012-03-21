@@ -1822,8 +1822,8 @@ callable object\n\
      (getter) LineBreak_get_virama_as_joiner,
      (setter) LineBreak_set_virama_as_joiner,
      PyDoc_STR("\
-Virama sign (\"halant\" in Hindi, \"coeng\" in Khmer) and its succeeding \
-letter are not broken.\n\
+:term:`Virama sign` (\"halant\" in Hindi, \"coeng\" in Khmer) and its \n\
+succeeding letter are not broken.\n\
 \"Default\" grapheme cluster defined by [UAX29]_ does not contain this \
 feature.")},
     {NULL}			/* Sentinel */

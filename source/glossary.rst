@@ -1,5 +1,7 @@
 .. pytextseg documentation glossary
 
+.. _glossary:
+
 Glossary
 ========
   
@@ -34,7 +36,7 @@ Glossary
       (this term is inaccurate from the point of view by grammatology).
       [UAX14]_ classifies most of ideographic characters to 
       :term:`line breaking class` ID.
-      ee also :term:`alphabetic character`.
+      See also :term:`alphabetic character`.
 
    complex breaking
       Heuristic line breaking based on dictionary for several scripts
@@ -78,4 +80,12 @@ Glossary
    ambiguous quotation mark
       *To be written*
 
+   virama sign
+      The sign that many Brahmi-derived scripts in South Asia and South
+      East Asia are endowed with.
+      Its primary use is to cancel inherent vowel of consonants.
+      By several writing systems, they are used to form consonantal
+      clusters.
+      By Unicode Standard, some characters of virama signs are also used
+      to represent transformation of ligated character sequences.
 

@@ -72,7 +72,7 @@ either :attr:`charmax<textseg.LineBreak.charmax>`,
 or :attr:`minwidth<textseg.LineBreak.minwidth>`, **urgent break** may be
 performed on successive string.
 If you specify callable object as a value of 
-:attr:`urgent<textseg.LineBreak.urgent` option,
+:attr:`urgent<textseg.LineBreak.urgent>` attribute,
 it should accept two arguments::
 
     callable_object(self, string) -> [text, ...]
@@ -91,7 +91,7 @@ substances (such as Titin) so that it may be folded::
 
     # Example not yet written
 
-If you specify ``(*regular expression*, *callable object*)`` tuple as any 
+If you specify ``(regular expression, callable object)`` tuple as any 
 item of :attr:`prep<textseg.LineBreak.prep>` option, callable object 
 should accept two arguments::
 

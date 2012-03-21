@@ -33,10 +33,3 @@ References
    *Unicode Standard Annex #29: Unicode Text Segmentation*, Revision 15-17.
    <http://www.unicode.org/reports/tr29/>.
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
-

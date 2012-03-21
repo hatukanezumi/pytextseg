@@ -104,7 +104,7 @@ textseg.Consts.\ ``lbcXX``
 
     .. note::
        Property value ``CP`` was introduced by Unicode 5.2.0.
-       Property value ``HL`` and ``CJ`` may be introduced by Unicode 6.1.0.
+       Property value ``HL`` and ``CJ`` were introduced by Unicode 6.1.0.
 
 textseg.Consts.\ ``sea_support``
     Flag to determin if word segmentation for South East Asian writing

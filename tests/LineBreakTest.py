@@ -11,7 +11,7 @@ specified in the README file.
 import os
 import re
 import unittest
-from textseg import LineBreak, fill, fold, unfold
+from textseg import LineBreak, LineBreakException, fill, fold, unfold
 from textseg.Consts import eawZ, eawN, lbcID, sea_support, \
                            AMBIGUOUS_ALPHABETICS, KANA_NONSTARTERS
 
@@ -155,7 +155,7 @@ class LineBreakTest(unittest.TestCase):
                     minwidth=7, width=66, urgent='FORCE')
         try:
             self.doTest([('ecclesiazusae', 'ecclesiazusae')], urgent='RAISE')
-        except:
+        except LineBreakException:
             self.assertEqual(True, True)
         else:
             self.assertEqual(True, False)

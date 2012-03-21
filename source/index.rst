@@ -21,7 +21,13 @@ It also provides lower level interfaces for text segmentation:
    doc
    custom
    notes
-   changes
-   glossary
    back
+
+   glossary
+   changes
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+* :ref:`glossary`
 
