@@ -29,7 +29,7 @@ except ImportError:
 # CONSTANTS
 ###############################################################################
 
-SOMBOK_VERSION = '2.1.1'
+SOMBOK_VERSION = '2.2'
 UNICODE_VERSION = '6.1.0' # default for bundled source
 LIBTHAI_VERSION = '0.1.9'
 PKG_CONFIG = os.environ.get('PKG_CONFIG', 'pkg-config')
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
     setup(
         name="pytextseg",
-        version='0.1.0',
+        version='0.1.1',
         license="GNU General Public License (GPL) or Artistic License",
         description='Python module for text segmentation.',
         long_description=open('README', 'r').read(),

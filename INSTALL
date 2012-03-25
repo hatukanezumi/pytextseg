@@ -10,7 +10,7 @@ also supported.
 
 C compiler is required to build this Python extension.
 
-Sombok library package 2.1.1 or later is required.  If you had not 
+Sombok library package 2.2 or later is required.  If you had not 
 got it, bundled sources are used.
 
     http://sourceforge.net/projects/linefold/files/sombok/

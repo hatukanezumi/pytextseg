@@ -3,119 +3,80 @@
 """\
 Constants for textseg package.
 
-textseg.Consts.\ ``eawNa``
+.. data:: eawNa
+.. data:: eawN
+.. data:: eawA
+.. data:: eawW
+.. data:: eawH
+.. data:: eawF
+.. data:: eawZ
 
-textseg.Consts.\ ``eawN``
+   Index values to specify six :term:`East_Asian_Width` properties
+   defined by [UAX #11], and eawZ to specify nonspacing.
 
-textseg.Consts.\ ``eawA``
+   .. note::
+      Property value ``Z`` is non-standard.
 
-textseg.Consts.\ ``eawW``
+.. data:: lbcBK
+.. data:: lbcCR
+.. data:: lbcLF
+.. data:: lbcNL
+.. data:: lbcSP
+.. data:: lbcOP
+.. data:: lbcCL
+.. data:: lbcCP
+.. data:: lbcQU
+.. data:: lbcGL
+.. data:: lbcNS
+.. data:: lbcEX
+.. data:: lbcSY
+.. data:: lbcIS
+.. data:: lbcPR
+.. data:: lbcPO
+.. data:: lbcNU
+.. data:: lbcAL
+.. data:: lbcHL
+.. data:: lbcID
+.. data:: lbcIN
+.. data:: lbcHY
+.. data:: lbcBA
+.. data:: lbcBB
+.. data:: lbcB2
+.. data:: lbcCB
+.. data:: lbcZW
+.. data:: lbcCM
+.. data:: lbcWJ
+.. data:: lbcH2
+.. data:: lbcH3
+.. data:: lbcJL
+.. data:: lbcJV
+.. data:: lbcJT
+.. data:: lbcSG
+.. data:: lbcAI
+.. data:: lbcCJ
+.. data:: lbcSA
+.. data:: lbcXX
 
-textseg.Consts.\ ``eawH``
+   Index values to specify 39 line breaking properties (classes)
+   defined by [UAX #14].
 
-textseg.Consts.\ ``eawF``
+   .. note::
+      Property value ``CP`` was introduced by Unicode 5.2.0.
+      Property value ``HL`` and ``CJ`` were introduced by Unicode 6.1.0.
 
-textseg.Consts.\ ``eawZ``
-    Index values to specify 6 :term:`East_Asian_Width` properties
-    defined by [UAX #11], and eawZ to specify nonspacing.
+.. data:: sea_support
 
-    .. note::
-       Property value ``Z`` is non-standard.
+   Flag to determin if word segmentation for South East Asian writing
+   systems is enabled.  If this feature was enabled, a non-empty string
+   is set.  Otherwise, ``None`` is set.
 
-textseg.Consts.\ ``lbcBK``
+   .. note::
+      Current release supports Thai script of modern Thai language only.
 
-textseg.Consts.\ ``lbcCR``
+.. data:: unicode_version
 
-textseg.Consts.\ ``lbcLF``
+   A string to specify version of Unicode Standard this module refers.
 
-textseg.Consts.\ ``lbcNL``
-
-textseg.Consts.\ ``lbcSP``
-
-textseg.Consts.\ ``lbcOP``
-
-textseg.Consts.\ ``lbcCL``
-
-textseg.Consts.\ ``lbcCP``
-
-textseg.Consts.\ ``lbcQU``
-
-textseg.Consts.\ ``lbcGL``
-
-textseg.Consts.\ ``lbcNS``
-
-textseg.Consts.\ ``lbcEX``
-
-textseg.Consts.\ ``lbcSY``
-
-textseg.Consts.\ ``lbcIS``
-
-textseg.Consts.\ ``lbcPR``
-
-textseg.Consts.\ ``lbcPO``
-
-textseg.Consts.\ ``lbcNU``
-
-textseg.Consts.\ ``lbcAL``
-
-textseg.Consts.\ ``lbcHL``
-
-textseg.Consts.\ ``lbcID``
-
-textseg.Consts.\ ``lbcIN``
-
-textseg.Consts.\ ``lbcHY``
-
-textseg.Consts.\ ``lbcBA``
-
-textseg.Consts.\ ``lbcBB``
-
-textseg.Consts.\ ``lbcB2``
-
-textseg.Consts.\ ``lbcCB``
-
-textseg.Consts.\ ``lbcZW``
-
-textseg.Consts.\ ``lbcCM``
-
-textseg.Consts.\ ``lbcWJ``
-
-textseg.Consts.\ ``lbcH2``
-
-textseg.Consts.\ ``lbcH3``
-
-textseg.Consts.\ ``lbcJL``
-
-textseg.Consts.\ ``lbcJV``
-
-textseg.Consts.\ ``lbcJT``
-
-textseg.Consts.\ ``lbcSG``
-
-textseg.Consts.\ ``lbcAI``
-
-textseg.Consts.\ ``lbcCJ``
-
-textseg.Consts.\ ``lbcSA``
-
-textseg.Consts.\ ``lbcXX``
-    Index values to specify 39 line breaking properties (classes)
-    defined by [UAX #14].
-
-    .. note::
-       Property value ``CP`` was introduced by Unicode 5.2.0.
-       Property value ``HL`` and ``CJ`` were introduced by Unicode 6.1.0.
-
-textseg.Consts.\ ``sea_support``
-    Flag to determin if word segmentation for South East Asian writing
-    systems is enabled.  If this feature was enabled, a non-empty string
-    is set.  Otherwise, ``None`` is set.
-
-    .. note::
-       Current release supports Thai script of modern Thai language only.
-
-textseg.Consts.\ ``unicode_version``
-    A string to specify version of Unicode Standard this module refers.
 """
 # Copyright (C) 2012 by Hatuka*nezumi - IKEDA Soji.
 #

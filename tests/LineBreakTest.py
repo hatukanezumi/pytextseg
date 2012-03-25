@@ -258,9 +258,9 @@ class LineBreakTest(unittest.TestCase):
 
     def test_16regex(self):
         # Regex matching most of URL-like strings.
-        urire = re.compile(r'''(?iux)\b(?:url:)?
+        urire = re.compile(r'''\b(?:url:)?
         (?:[a-z][-0-9a-z+.]+://|news:|mailto:)
-        [\x21-\x7E]+''')
+        [\x21-\x7E]+''', re.I + re.U + re.X)
         punctre = re.compile(r'\A[\".:;,>]+\Z', re.U)
 
         # Breaking URIs according to some CMoS rules.
@@ -310,7 +310,7 @@ class LineBreakTest(unittest.TestCase):
                     prep=[(urire, nonBreak)])
         # [STRING, FUNC] pair
         self.doTest([('uri', 'uri.nonbreak')], width=1,
-                     prep=[(urire.pattern, nonBreak)])
+                     prep=[(urire.pattern, nonBreak, re.I + re.U + re.X)])
         # multiple patterns
         self.doTest([('uri', 'uri.break')], width=1,
                     prep=[(urire, breakURI),

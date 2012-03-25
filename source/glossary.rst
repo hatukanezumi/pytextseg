@@ -11,6 +11,7 @@ Glossary
    mandatory break
       Obligatory line breaking behavior defined by core
       rules and performed regardless of surrounding characters.
+      See also :term:`direct break`, :term:`indirect break`.
 
    direct break
       A line break opportunity exists between two adjacent characters.
@@ -47,7 +48,7 @@ Glossary
    number of columns
       Number of columns of a string is not always equal to the number of 
       characters it contains:
-      Each of characters is either **wide**, **narrow** or nonspacing;
+      Each of characters is either *wide*, *narrow* or nonspacing;
       they occupy 2, 1 or 0 columns, respectively.
       Several characters may be both wide and narrow by the contexts they 
       are used.
@@ -56,9 +57,9 @@ Glossary
    grapheme cluster
       A concept defined by Unicode Standard Annex #29 ([UAX29]_).
       Grapheme cluster is a sequence of Unicode character(s) that consists 
-      of one **grapheme base** and optional **grapheme extender** and/or 
-      **"prepend" character**.  It is close in that people consider as 
-      *character*.
+      of one *grapheme base* and optional *grapheme extender* and/or 
+      *"prepend" character*.  It is close in that people consider as 
+      "character".
 
    line breaking class
       Classification of Unicode characters defined by Unicode Standard
@@ -75,17 +76,23 @@ Glossary
       The character that cannot be placed at beginning of lines.
       [UAX14]_ classifies non-starters to :term:`line breaking class` 
       NS or CJ.
-      It includes small hiragana/katakana and some punctuations.
+      It includes small hiragana, small katakana and some punctuations.
 
    ambiguous quotation mark
       *To be written*
 
    virama sign
-      The sign that many Brahmi-derived scripts in South Asia and South
-      East Asia are endowed with.
+      The sign that many Brahmi-derived *abugida*\ s in South Asia and
+      South East Asia are endowed with.
       Its primary use is to cancel inherent vowel of consonants.
       By several writing systems, they are used to form consonantal
       clusters.
       By Unicode Standard, some characters of virama signs are also used
       to represent transformation of ligated character sequences.
+
+   hangul
+      A syllabary used for Korean language.
+      In traditional sense, hangul characters behave as
+      :term:`ideographic character`\ s, while each character consists
+      of a few *jamo* which represent features of pronounciation.
 

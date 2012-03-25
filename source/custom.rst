@@ -91,7 +91,7 @@ substances (such as Titin) so that it may be folded::
 
     # Example not yet written
 
-If you specify ``(regular expression, callable object)`` tuple as any 
+If you specify ``(regular expression, callable object[, flags])`` tuple as any 
 item of :attr:`prep<textseg.LineBreak.prep>` option, callable object 
 should accept two arguments::
 
@@ -104,7 +104,7 @@ Callable object should return a list of broken items of *string*.
 
 For example, following code will break HTTP URLs using [CMOS]_ rule::
 
-    urire = re.compile(r'\b(?:url:)?[a-z][-0-9a-z+.]+://[\x21-\x7E]+',
+    urire = re.compile(r'\b(?:url:)?http://[\x21-\x7E]+',
                        re.I + re.U)
     def breakURI(self, s):
         r = ''
@@ -130,6 +130,9 @@ For example, following code will break HTTP URLs using [CMOS]_ rule::
         return ret
 
     output = fill(text, prep = [(urire, breakURI)])
+
+.. versionchanged:: 0.1.1
+   prep attribute accepts tuples with third item *flags*. 
 
 .. _`Preserving State`:
 
@@ -199,6 +202,8 @@ columns::
 Tailoring Character Properties
 ==============================
 
+.. currentmodule:: textseg.Consts
+
 Character properties may be tailored by :attr:`lbc<textseg.LineBreak.lbc>` and 
 :attr:`eaw<textseg.LineBreak.eaw>` options.
 Some constants are defined for convenience of tailoring.
@@ -209,22 +214,28 @@ Line Breaking Properties
 Non-starters of Kana-like Characters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. data:: KANA_NONSTARTERS
+.. data:: IDEOGRAPHIC_ITERATION_MARKS
+.. data:: KANA_SMALL_LETTERS
+.. data:: KANA_PROLONGED_SOUND_MARKS
+.. data:: MASU_MARK
+
 By default, several hiragana, katakana and characters corresponding to kana
 are treated as :term:`non-starter`\ s (NS or CJ).
-When the :attr:`lbc<textseg.LineBreak.lbc>` attribute is updated by 
+When the :attr:`lbc<textseg.LineBreak.lbc>` attribute is updated by
 following items,
 these characters are treated as normal :term:`ideographic character`\ s (ID).
 
-``{ textseg.Consts.KANA_NONSTARTERS: textseg.Consts.lbcID }``
+``{ KANA_NONSTARTERS: lbcID }``
     All of characters below.
 
-``{ textseg.Consts.IDEOGRAPHIC_ITERATION_MARKS: textseg.Consts.lbcID }``
+``{ IDEOGRAPHIC_ITERATION_MARKS: lbcID }``
     Ideographic iteration marks.
     |udl3005|, |udl303B|, |udl309D|, |udl309E|, |udl30FD| and |udl30FE|.
 
     .. note:: Some of them are neither hiragana nor katakana.
 
-``{ textseg.Consts.KANA_SMALL_LETTERS: textseg.Consts.lbcID }``
+``{ KANA_SMALL_LETTERS: lbcID }``
 
     Hiragana or katakana small letters.
 
@@ -251,12 +262,12 @@ these characters are treated as normal :term:`ideographic character`\ s (ID).
     .. note:: |uds3095|, |uds3096|, |uds30F5| and |uds30F6| are considered 
        to be neither hiragana nor katakana.
 
-``{ textseg.Consts.KANA_PROLONGED_SOUND_MARKS: textseg.Consts.lbcID }``
+``{ KANA_PROLONGED_SOUND_MARKS: lbcID }``
 
     Hiragana or katakana prolonged sound marks.
     |udl30FC| and |udlFF70|.
 
-``{ textseg.Consts.MASU_MARK: textseg.Consts.lbcID }``
+``{ MASU_MARK: lbcID }``
     |udl303C|.
 
     .. note:: Although this character is not kana, it is usually regarded as
@@ -269,25 +280,30 @@ these characters are treated as normal :term:`ideographic character`\ s (ID).
 Ambiguous Quotation Marks
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. data:: BACKWARD_QUOTES
+.. data:: FORWARD_QUOTES
+.. data:: BACKWARD_GUILLEMETS
+.. data:: FORWARD_GUILLEMETS
+
 By default, some punctuations are :term:`ambiguous quotation mark`\ s (QU).
 
-``{ textseg.Consts.BACKWARD_QUOTES: textseg.Consts.lbcOP, textseg.Consts.FORWARD_QUOTES: textseg.Consts.lbcCL }``
+``{ BACKWARD_QUOTES: lbcOP, FORWARD_QUOTES: lbcCL }``
     Some languages (Dutch, English, Italian, Portugese, Spanish, Turkish and
     most East Asian) use rotated-9-style punctuations (|uc2018| |uc201C|) as
     opening and 9-style punctuations (|uc2019| |uc201D|) as closing quotation
     marks.
 
-``{ textseg.Consts.FORWARD_QUOTES: textseg.Consts.lbcOP, textseg.Consts.BACKWARD_QUOTES: textseg.Consts.lbcCL }``
+``{ FORWARD_QUOTES: lbcOP, BACKWARD_QUOTES: lbcCL }``
     Some others (Czech, German and Slovak) use 9-style punctuations
     (|uc2019| |uc201D|) as opening and rotated-9-style punctuations
     (|uc2018| |uc201C|) as closing quotation marks.
 
-``{ textseg.Consts.BACKWARD_GUILLEMETS: textseg.Consts.lbcOP, textseg.Consts.FORWARD_GUILLEMETS: textseg.Consts.lbcCL }``
+``{ BACKWARD_GUILLEMETS: lbcOP, FORWARD_GUILLEMETS: lbcCL }``
     French, Greek, Russian etc. use left-pointing guillemets (|uc00AB| |uc2039|)
     as opening and right-pointing guillemets (|uc00BB| |uc203A|) as closing
     quotation marks.
 
-``{ textseg.Consts.FORWARD_GUILLEMETS: textseg.Consts.lbcOP, textseg.Consts.BACKWARD_GUILLEMETS: textseg.Consts.lbcCL }``
+``{ FORWARD_GUILLEMETS: lbcOP, BACKWARD_GUILLEMETS: lbcCL }``
     German and Slovak use right-pointing guillemets (|uc00BB| |uc203A|) as
     opening and left-pointing guillemets (|uc00AB| |uc2039|) as closing
     quotation marks.
@@ -299,6 +315,11 @@ closing quotation marks.
 East_Asian_Width Properties
 ---------------------------
 
+.. data:: AMBIGUOUS_ALPHABETICS
+.. data:: AMBIGUOUS_CYRILLIC
+.. data:: AMBIGUOUS_GREEK
+.. data:: AMBIGUOUS_LATIN
+
 Some particular letters of Latin, Greek and Cyrillic scripts have ambiguous
 (A) :term:`East_Asian_Width` property.  Thus, these characters are treated 
 as wide when :attr:`eastasian_context<textseg.LineBreak.eastasian_context>` 
@@ -306,16 +327,18 @@ attribute is true.
 Updating :attr:`eaw<textseg.LineBreak.eaw>` attribute with following values,
 those characters are always treated as narrow.
 
-``{ textseg.Consts.AMBIGUOUS_ALPHABETICS: textseg.Consts.eawN }``
+``{ AMBIGUOUS_ALPHABETICS: eawN }``
     Treat all of characters below as East_Asian_Width neutral (N).
 
-``{ textseg.Consts.AMBIGUOUS_CYRILLIC: textseg.Consts.eawN }``
+``{ AMBIGUOUS_CYRILLIC: eawN }``
 
-``{ textseg.Consts.AMBIGUOUS_GREEK: textseg.Consts.eawN }``
+``{ AMBIGUOUS_GREEK: eawN }``
 
-``{ textseg.Consts.AMBIGUOUS_LATIN: textseg.Consts.eawN }``
+``{ AMBIGUOUS_LATIN: eawN }``
     Treate letters having ambiguous (A) width of Cyrillic, Greek and Latin 
     scripts as neutral (N).
+
+.. data:: QUESTIONABLE_NARROW_SIGNS
 
 On the other hand, despite several characters were occasionally rendered as 
 wide characters by number of implementations for East Asian character sets, 
@@ -326,7 +349,7 @@ following values, those characters are treated as ambiguous ---
 wide when :attr:`eastasian_context<textseg.LineBreak.eastasian_context>` 
 attribute is true.
 
-``{ textseg.Consts.QUESTIONABLE_NARROW_SIGNS: textseg.Consts.eawA }``
+``{ QUESTIONABLE_NARROW_SIGNS: eawA }``
     |udl00A2|, |udl00A3|, |udl00A5| (or yuan sign),
     |udl00A6|, |udl00AC|, |udl00AF|.
 
