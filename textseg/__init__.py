@@ -255,9 +255,7 @@ class.
         kwds['eastasian_context'] = eastasian_context
 
     lb = LineBreak(**kwds)
-    lbc = lb.lbc
-    lbc[ord("\t")] = lbcSP
-    lb.lbc = lbc
+    lb.lbc["\t"] = lbcSP
 
     result = ''
     for s in _specialBreakRe.split(string):

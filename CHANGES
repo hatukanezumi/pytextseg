@@ -5,6 +5,10 @@ pytextseg Changelog
 Beta
 ====
 
+0.2.0 - 2012-04-01
+------------------
+- LineBreak: lbc & eaw allow in-place updates.
+
 0.1.1 - not released
 --------------------
 - LineBreak: Bug fix: argument 2 of sizing callback is Float, not Int.

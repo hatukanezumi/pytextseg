@@ -23,9 +23,12 @@
  *** Objects
  ***/
 
+struct _TDictObject;
+
 typedef struct {
     PyObject_HEAD
     linebreak_t * obj;
+    struct _TDictObject * tdict;
 } LineBreakObject;
 
 typedef struct {
@@ -33,13 +36,37 @@ typedef struct {
     gcstring_t * obj;
 } GCStrObject;
 
+typedef enum {
+    TDICT_LBC,
+    TDICT_EAW
+} tdicttype;
+
+typedef struct _TDictObject {
+    PyObject_HEAD
+    PyObject * lb;
+    tdicttype ttype;
+    struct _TDictObject * prev;
+    struct _TDictObject * next;
+} TDictObject;
+
 static PyTypeObject LineBreak_Type;
 static PyTypeObject GCStr_Type;
+static PyTypeObject TDict_Type;
 
 #define LineBreak_Check(op) PyObject_TypeCheck(op, &LineBreak_Type)
 #define LineBreak_CheckExact(op) (Py_TYPE(op) == &LineBreak_Type)
 #define GCStr_Check(op) PyObject_TypeCheck(op, &GCStr_Type)
 #define GCStr_CheckExact(op) (Py_TYPE(op) == &GCStr_Type)
+/* TDictObject does not expect subclassing. */
+#define TDict_CheckExact(op) (Py_TYPE(op) == &TDict_Type)
+
+/***
+ *** Constants
+ ***/
+
+static PyObject * TEXTSEG_SIMPLE, * TEXTSEG_NEWLINE, * TEXTSEG_TRIM,
+		* TEXTSEG_BREAKURI, * TEXTSEG_NONBREAKURI,
+		* TEXTSEG_UAX11, * TEXTSEG_FORCE, * TEXTSEG_RAISE;
 
 /***
  *** Data conversion.
@@ -397,6 +424,70 @@ genericstr_ToString(PyObject * pyobj)
 	Py_DECREF(pystr);
     }
     return ret;
+}
+
+/**
+ * Convert Python object, Integer, Byte string, Unicode string or
+ * GCStrObject to UCS scalar value.
+ * If error occurred, exception will be raised and -1 will be returned.
+ */
+
+static unichar_t
+strOrInt_ToUCS(PyObject *pyobj)
+{
+    PyObject *pystr;
+    unichar_t c;
+    int kind;
+
+    if (PyInt_Check(pyobj))
+	c = (unichar_t) PyInt_AsLong(pyobj);
+    else if (PyLong_Check(pyobj))
+	c = (unichar_t) PyLong_AsLong(pyobj);
+    else {
+	if (PyUnicode_Check(pyobj))
+	    pystr = pyobj;
+	else if ((pystr = PyObject_Unicode(pyobj)) == NULL)
+	    return (unichar_t)(-1);
+
+	if (PyUnicode_READY(pystr) != 0) {
+	    if (! PyUnicode_Check(pyobj)) {
+		Py_DECREF(pystr);
+	    }
+	    return (unichar_t)(-1);
+	}
+	if (PyUnicode_GET_LENGTH(pystr) == 0) {
+	    PyErr_SetString(PyExc_ValueError,
+			    "empty string must not be a key");
+
+	    if (! PyUnicode_Check(pyobj)) {
+		Py_DECREF(pystr);
+	    }
+	    return (unichar_t)(-1);
+	}
+	kind = PyUnicode_KIND(pystr);
+	if (kind == PyUnicode_1BYTE_KIND)
+	    c = (unichar_t) *((Py_UCS1 *) PyUnicode_DATA(pystr));
+	else if (kind == PyUnicode_2BYTE_KIND)
+	    c = (unichar_t) *((Py_UCS2 *) PyUnicode_DATA(pystr));
+	else if (kind == PyUnicode_4BYTE_KIND)
+	    c = (unichar_t) *((Py_UCS4 *) PyUnicode_DATA(pystr));
+	else {
+	    PyErr_SetString(PyExc_SystemError, "invalid kind.");
+
+	    if (! PyUnicode_Check(pyobj)) {
+		Py_DECREF(pystr);
+	    }
+	    return (unichar_t)(-1);
+	}
+#ifdef OLDAPI_Py_UNICODE_NARROW
+	/* FIXME: Add surrogate pair support. */
+#endif				/* OLDAPI_Py_UNICODE_NARROW */
+
+	if (! PyUnicode_Check(pyobj)) {
+	    Py_DECREF(pystr);
+	}
+    }
+    return c;
 }
 
 /***
@@ -844,8 +935,14 @@ static PyObject *LineBreakException;
  */
 
 static void
-LineBreak_dealloc(PyObject * self)
+LineBreak_dealloc(LineBreakObject * self)
 {
+    TDictObject * tdict;
+
+    /* remove linkage to tailoring dictionaries */
+    for (tdict = self->tdict; tdict != NULL; tdict = tdict->next)
+	tdict->lb = NULL;
+
     linebreak_destroy(LineBreak_AS_CSTRUCT(self));
     Py_TYPE(self)->tp_free(self);
 }
@@ -891,6 +988,9 @@ LineBreak_new(PyTypeObject * type, PyObject * args, PyObject * kwds)
     linebreak_set_stash(self->obj, stash);
     Py_DECREF(stash);		/* fixup */
 
+    /* tailoring dictionary */
+    self->tdict = NULL;
+
     return (PyObject *) self;
 }
 
@@ -912,7 +1012,6 @@ LineBreak_subtype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     Py_DECREF(tmp);
     return newobj;
 }
-
 
 static PyGetSetDef LineBreak_getseters[];
 
@@ -956,6 +1055,8 @@ LineBreak_init(LineBreakObject * self, PyObject * args, PyObject * kwds)
  * Attribute methods
  */
 
+static PyObject * TDict_FromLineBreak(PyObject *, tdicttype);
+
 #define _get_Boolean(name, bit) \
     static PyObject * \
     LineBreak_get_##name(PyObject *self) \
@@ -995,22 +1096,7 @@ _get_Boolean(eastasian_context, LINEBREAK_OPTION_EASTASIAN_CONTEXT)
 static PyObject *
 LineBreak_get_eaw(PyObject * self)
 {
-    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
-    PyObject *val;
-
-    val = PyDict_New();
-    if (lb->map != NULL && lb->mapsiz != 0) {
-	unichar_t c;
-	PyObject *p;
-	size_t i;
-	for (i = 0; i < lb->mapsiz; i++)
-	    if (lb->map[i].eaw != PROP_UNKNOWN) {
-		p = PyInt_FromLong((signed long) lb->map[i].eaw);
-		for (c = lb->map[i].beg; c <= lb->map[i].end; c++)
-		    PyDict_SetItem(val, PyInt_FromLong(c), p);
-	    }
-    }
-    return val;
+    return TDict_FromLineBreak(self, TDICT_EAW);
 }
 
 static PyObject *
@@ -1020,22 +1106,20 @@ LineBreak_get_format(PyObject * self)
     PyObject *val;
 
     if (lb->format_func == NULL) {
-	val = Py_None;
-	Py_INCREF(val);
+	Py_RETURN_NONE;
     } else if (lb->format_func == linebreak_format_NEWLINE)
-	val = PyString_FromString("NEWLINE");
+	val = TEXTSEG_NEWLINE;
     else if (lb->format_func == linebreak_format_SIMPLE)
-	val = PyString_FromString("SIMPLE");
+	val = TEXTSEG_SIMPLE;
     else if (lb->format_func == linebreak_format_TRIM)
-	val = PyString_FromString("TRIM");
-    else if (lb->format_func == format_func) {
+	val = TEXTSEG_TRIM;
+    else if (lb->format_func == format_func)
 	val = (PyObject *) lb->format_data;
-	Py_INCREF(val);
-    } else {
-	PyErr_Format(PyExc_RuntimeError,
-		     "Internal error.  Ask developer.");
+    else {
+	PyErr_Format(PyExc_RuntimeError, "internal error");
 	return NULL;
     }
+    Py_INCREF(val);
     return val;
 }
 
@@ -1044,22 +1128,7 @@ _get_Boolean(hangul_as_al, LINEBREAK_OPTION_HANGUL_AS_AL)
 static PyObject *
 LineBreak_get_lbc(PyObject * self)
 {
-    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
-    PyObject *val;
-
-    val = PyDict_New();
-    if (lb->map != NULL && lb->mapsiz != 0) {
-	unichar_t c;
-	PyObject *p;
-	size_t i;
-	for (i = 0; i < lb->mapsiz; i++)
-	    if (lb->map[i].lbc != PROP_UNKNOWN) {
-		p = PyInt_FromLong((signed long) lb->map[i].lbc);
-		for (c = lb->map[i].beg; c <= lb->map[i].end; c++)
-		    PyDict_SetItem(val, PyInt_FromLong(c), p);
-	    }
-    }
-    return val;
+    return TDict_FromLineBreak(self, TDICT_LBC);
 }
 
 _get_Boolean(legacy_cm, LINEBREAK_OPTION_LEGACY_CM)
@@ -1085,19 +1154,16 @@ LineBreak_get_prep(PyObject * self)
 	val = PyList_New(0);
 	for (i = 0; lb->prep_func[i] != NULL; i++) {
 	    if (lb->prep_func[i] == linebreak_prep_URIBREAK) {
-		if (lb->prep_data == NULL ||
-		    lb->prep_data[i] == NULL)
-		    v = PyString_FromString("NONBREAKURI");
+		if (lb->prep_data == NULL || lb->prep_data[i] == NULL)
+		    v = TEXTSEG_NONBREAKURI;
 		else
-		    v = PyString_FromString("BREAKURI");
-	    } else if (lb->prep_data == NULL ||
-		       lb->prep_data[i] == NULL) {
+		    v = TEXTSEG_BREAKURI;
+	    } else if (lb->prep_data == NULL || lb->prep_data[i] == NULL) {
 		v = Py_None;
-		Py_INCREF(v);
 	    } else {
 		v = lb->prep_data[i];
-		Py_INCREF(v);
 	    }
+	    /* Py_INCREF(v) */
 	    PyList_Append(val, v);
 	}
     }
@@ -1110,13 +1176,14 @@ LineBreak_get_sizing(PyObject * self)
     linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
     PyObject *val;
 
-    if (lb->sizing_func == NULL)
-	val = Py_None;
-    else if (lb->sizing_func == linebreak_sizing_UAX11 ||
-	     lb->sizing_func == sizing_func)
+    if (lb->sizing_func == NULL) {
+	Py_RETURN_NONE;
+    } else if (lb->sizing_func == linebreak_sizing_UAX11)
+	val = TEXTSEG_UAX11;
+    else if (lb->sizing_func == sizing_func)
 	val = (PyObject *) lb->sizing_data;
     else {
-	PyErr_Format(PyExc_RuntimeError, "XXX");
+	PyErr_Format(PyExc_RuntimeError, "internal error");
 	return NULL;
     }
     Py_INCREF(val);
@@ -1131,19 +1198,19 @@ LineBreak_get_urgent(PyObject * self)
     PyObject *val;
 
     if (lb->urgent_func == NULL) {
-	val = Py_None;
-	Py_INCREF(val);
+	Py_RETURN_NONE;
     } else if (lb->urgent_func == linebreak_urgent_ABORT)
-	val = PyString_FromString("RAISE");
+	val = TEXTSEG_RAISE;
     else if (lb->urgent_func == linebreak_urgent_FORCE)
-	val = PyString_FromString("FORCE");
+	val = TEXTSEG_FORCE;
     else if (lb->urgent_func == urgent_func) {
 	val = (PyObject *) lb->urgent_data;
-	Py_INCREF(val);
     } else {
-	PyErr_Format(PyExc_RuntimeError, "XXX");
+	PyErr_Format(PyExc_RuntimeError, "internal error");
 	return NULL;
     }
+
+    Py_INCREF(val);
     return val;
 }
 
@@ -1171,100 +1238,8 @@ _get_Boolean(virama_as_joiner, LINEBREAK_OPTION_VIRAMA_AS_JOINER)
 	    lb->options &= ~bit; \
 	return 0; \
     }
-static int
-_update_maps(linebreak_t * lb, PyObject * dict, int maptype)
-{
-    Py_ssize_t pos, i;
-    PyObject *key, *value, *item;
-    propval_t p;
-    unichar_t c;
-    int kind;
 
-    if (dict == NULL) {
-	PyErr_Format(PyExc_NotImplementedError,
-		     "Can not delete attribute");
-	return -1;
-    }
-    if (!PyDict_Check(dict)) {
-	PyErr_Format(PyExc_TypeError,
-		     "attribute must be dictionary, not %200s",
-		     Py_TYPE(dict)->tp_name);
-	return -1;
-    }
-
-    pos = 0;
-    while (PyDict_Next(dict, &pos, &key, &value)) {
-	if (PyInt_Check(value))
-	    p = (propval_t) PyInt_AsLong(value);
-	else if (PyLong_Check(value))
-	    p = (propval_t) PyLong_AsLong(value);
-	else {
-	    PyErr_Format(PyExc_ValueError,
-			 "value of map must be integer, not %200s",
-			 Py_TYPE(value)->tp_name);
-	    return -1;
-	}
-
-	if (PySequence_Check(key)) {
-	    for (i = 0; (item = PySequence_GetItem(key, i)) != NULL; i++) {
-		if (PyUnicode_Check(item)) {
-		    if (PyUnicode_READY(item) != 0)
-			return -1;
-		    if (PyUnicode_GET_LENGTH(item) == 0)
-			continue;
-
-		    kind = PyUnicode_KIND(item);
-		    if (kind == PyUnicode_1BYTE_KIND)
-			c = (unichar_t)
-			    *((Py_UCS1 *) PyUnicode_DATA(item));
-		    else if (kind == PyUnicode_2BYTE_KIND)
-			c = (unichar_t)
-			    *((Py_UCS2 *) PyUnicode_DATA(item));
-		    else if (kind == PyUnicode_4BYTE_KIND)
-			c = (unichar_t)
-			    *((Py_UCS4 *) PyUnicode_DATA(item));
-		    else {
-			PyErr_SetString(PyExc_SystemError, "invalid kind.");
-			return -1;
-		    }
-#ifdef OLDAPI_Py_UNICODE_NARROW
-		    /* FIXME: Add surrogate pair support. */
-#endif				/* OLDAPI_Py_UNICODE_NARROW */
-		} else if (PyInt_Check(item))
-		    c = (unichar_t) PyInt_AsLong(item);
-		else if (PyLong_Check(item))
-		    c = (unichar_t) PyLong_AsLong(item);
-		else {
-		    PyErr_Format(PyExc_ValueError,
-				 "key of map must be integer or character, "
-				 "not %200s", Py_TYPE(value)->tp_name);
-		    return -1;
-		}
-		if (maptype == 0)
-		    linebreak_update_lbclass(lb, c, p);
-		else
-		    linebreak_update_eawidth(lb, c, p);
-	    }
-	    PyErr_Clear();
-	    continue;		/* while (PyDict_Next( ... */
-	} else if (PyInt_Check(key))
-	    c = (unichar_t) PyInt_AsLong(key);
-	else if (PyLong_Check(key))
-	    c = (unichar_t) PyLong_AsLong(key);
-	else {
-	    PyErr_Format(PyExc_ValueError,
-			 "key of map must be integer or character, not %200s",
-			 Py_TYPE(value)->tp_name);
-	    return -1;
-	}
-	if (maptype == 0)
-	    linebreak_update_lbclass(lb, c, p);
-	else
-	    linebreak_update_eawidth(lb, c, p);
-    }
-
-    return 0;
-}
+static int tdict_update(PyObject *, PyObject *, int);
 
 static int
 LineBreak_set_linebreakType(PyObject * self, PyObject * value, void *closure)
@@ -1279,7 +1254,7 @@ LineBreak_set_linebreakType(PyObject * self, PyObject * value, void *closure)
 		     ((PyTypeObject *)value)->tp_name);
 	return -1;
     }
-    Py_INCREF(value);
+    Py_INCREF(value);	/* ref. to be stolen */
     if (PyTuple_SetItem(LineBreak_AS_CSTRUCT(self)->stash, 1, value) != 0)
 	return -1;
     return 0;
@@ -1298,7 +1273,7 @@ LineBreak_set_gcstrType(PyObject * self, PyObject * value, void *closure)
 		     ((PyTypeObject *)value)->tp_name);
 	return -1;
     }
-    Py_INCREF(value);
+    Py_INCREF(value);	/* ref. to be stolen */
     if (PyTuple_SetItem(LineBreak_AS_CSTRUCT(self)->stash, 2, value) != 0)
 	return -1;
     return 0;
@@ -1318,7 +1293,7 @@ LineBreak_set_exceptionType(PyObject * self, PyObject * value, void *closure)
 		     ((PyTypeObject *)value)->tp_name);
 	return -1;
     }
-    Py_INCREF(value);
+    Py_INCREF(value);	/* ref. to be stolen */
     if (PyTuple_SetItem(LineBreak_AS_CSTRUCT(self)->stash, 3, value) != 0)
 	return -1;
     return 0;
@@ -1427,13 +1402,18 @@ _set_Boolean(eastasian_context, LINEBREAK_OPTION_EASTASIAN_CONTEXT)
 static int
 LineBreak_set_eaw(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
+    PyObject *tdict;
+    int result = 0;
 
-    if (value == Py_None)
-	linebreak_clear_eawidth(lb);
-    else
-	return _update_maps(lb, value, 1);
-    return 0;
+    if (value == NULL) {
+	PyErr_SetString(PyExc_AttributeError, "cannot remove attribute");
+	return -1;
+    }
+    if ((tdict = TDict_FromLineBreak(self, TDICT_EAW)) == NULL)
+	return -1;
+    result = tdict_update(tdict, value, 1);
+    Py_DECREF(tdict);
+    return result;
 }
 
 static int
@@ -1480,13 +1460,18 @@ _set_Boolean(hangul_as_al, LINEBREAK_OPTION_HANGUL_AS_AL)
 static int
 LineBreak_set_lbc(PyObject * self, PyObject * value, void *closure)
 {
-    linebreak_t *lb = LineBreak_AS_CSTRUCT(self);
+    PyObject *tdict;
+    int result = 0;
 
-    if (value == Py_None)
-	linebreak_clear_lbclass(lb);
-    else
-	return _update_maps(lb, value, 0);
-    return 0;
+    if (value == NULL) {
+	PyErr_SetString(PyExc_AttributeError, "cannot remove attribute");
+	return -1;
+    }
+    if ((tdict = TDict_FromLineBreak(self, TDICT_LBC)) == NULL)
+        return -1;
+    result = tdict_update(tdict, value, 1);
+    Py_DECREF(tdict);
+    return result;
 }
 
 _set_Boolean(legacy_cm, LINEBREAK_OPTION_LEGACY_CM)
@@ -1526,7 +1511,7 @@ LineBreak_set_prep(PyObject * self, PyObject * value, void *closure)
 	linebreak_add_prep(lb, NULL, NULL);
 	len = PyList_Size(value);
 	for (i = 0; i < len; i++) {
-	    item = PyList_GetItem(value, i);
+	    item = PyList_GetItem(value, i);	/* borrowed ref. */
 	    if (PyString_Check(item) || PyUnicode_Check(item)) {
 		if ((str = genericstr_ToString(item)) == NULL)
 		    break;
@@ -1553,14 +1538,14 @@ LineBreak_set_prep(PyObject * self, PyObject * value, void *closure)
 		    return -1;
 		}
 
-		patt = PyTuple_GetItem(item, 0);
+		patt = PyTuple_GetItem(item, 0);	/* borrowed ref. */
 		if (PyString_Check(patt) || PyUnicode_Check(patt)) {
 		    re_module = PyImport_ImportModule("re");
 		    func_compile = PyObject_GetAttrString(re_module,
 							  "compile");
-		    Py_INCREF(patt); /* !!! */
+		    Py_INCREF(patt); /* prevent destruction */
 		    if (2 < PyTuple_Size(item)) {
-			flgs = PyTuple_GetItem(item, 2);
+			flgs = PyTuple_GetItem(item, 2);	/* borrwed */
 			Py_INCREF(flgs);
 		    } else
 			flgs = PyInt_FromLong(0L);
@@ -2068,12 +2053,7 @@ LineBreak_wrap(PyObject * self, PyObject * args)
     broken = linebreak_break(lb, &unistr);
     free(unistr.str);
     if (PyErr_Occurred()) {
-	if (broken != NULL) {
-	    size_t i;
-	    for (i = 0; broken[i] != NULL; i++)
-		gcstring_destroy(broken[i]);
-	}
-	free(broken);
+	linebreak_free_result(broken, 1);
 	return NULL;
     } else if (broken == NULL) {
 	if (lb->errnum == LINEBREAK_ELONG)
@@ -2097,14 +2077,14 @@ LineBreak_wrap(PyObject * self, PyObject * args)
 	PyObject *v;
 	if ((v = GCStr_FromCstruct(gcstr_type, broken[i])) == NULL) {
 	    Py_DECREF(ret);
-	    for (; broken[i] != NULL; i++)
+	    for ( ; broken[i] != NULL; i++)
 		gcstring_destroy(broken[i]);
-	    free(broken);
+	    linebreak_free_result(broken, 0);
 	    return NULL;
 	}
 	PyList_Append(ret, v);
     }
-    free(broken);
+    linebreak_free_result(broken, 0);
 
     Py_INCREF(ret);
     return ret;
@@ -2151,7 +2131,7 @@ static PyTypeObject LineBreak_Type = {
     "_textseg.LineBreak",	/*tp_name */
     sizeof(LineBreakObject),	/*tp_basicsize */
     0,				/*tp_itemsize */
-    LineBreak_dealloc,		/*tp_dealloc */
+    (destructor)LineBreak_dealloc,		/*tp_dealloc */
     0,				/*tp_print */
     0,				/*tp_getattr */
     0,				/*tp_setattr */
@@ -2185,6 +2165,397 @@ static PyTypeObject LineBreak_Type = {
     (initproc) LineBreak_init,	/* tp_init */
     0,				/* tp_alloc */
     LineBreak_new,		/* tp_new */
+};
+
+/**
+ ** TailoringDict class
+ **/
+
+static void
+TDict_dealloc(TDictObject * self)
+{
+    /* remove linkage from LineBreak object */
+    if (self->lb != NULL) {
+	if (self->next != NULL)
+	    self->next->prev = self->prev;
+	if (self->prev != NULL)
+	    self->prev->next = self->next;
+	else
+	    ((LineBreakObject *)self->lb)->tdict = self->next;
+    }
+
+    Py_TYPE(self)->tp_free(self);
+}
+
+static PyObject *
+TDict_FromLineBreak(PyObject *lb, tdicttype ttype)
+{
+    TDictObject * self;
+
+    assert(LineBreak_Check(lb));
+
+    if ((self = (TDictObject *)TDict_Type.tp_alloc(&TDict_Type, 0)) == NULL)
+        return NULL;
+
+    self->ttype = ttype;
+    self->lb = lb;
+
+    /* add linkage to LineBreak object */
+    self->prev = NULL;
+    self->next = ((LineBreakObject *) lb)->tdict;
+    if (self->next != NULL)
+	self->next->prev = self;
+    ((LineBreakObject *) lb)->tdict = self;
+
+    return (PyObject *) self;
+}
+
+/*
+ * Mapping methods
+ */
+
+static PyObject *
+TDict_subscript(PyObject * self, PyObject * key)
+{
+    TDictObject * tdict = (TDictObject *)self;
+    unichar_t c;
+    propval_t p;
+
+    if (tdict->lb == NULL) {
+	PyErr_SetString(PyExc_KeyError, "parent object has gone");
+	return NULL;
+    }
+    if ((c = strOrInt_ToUCS(key)) == (unichar_t)(-1))
+	return NULL;
+
+    if (tdict->ttype == TDICT_LBC)
+	p = linebreak_search_lbclass(LineBreak_AS_CSTRUCT(tdict->lb), c);
+    else
+	p = linebreak_search_eawidth(LineBreak_AS_CSTRUCT(tdict->lb), c);
+    if (p == PROP_UNKNOWN) {
+	PyErr_Format(PyExc_KeyError, "not found");
+	return NULL;
+    }
+    return PyInt_FromLong((signed long) p);
+}
+
+static int
+TDict_ass_subscript(PyObject * self, PyObject * key, PyObject * value)
+{
+    TDictObject * tdict = (TDictObject *)self;
+    PyObject *item;
+    unichar_t c;
+    propval_t p;
+    size_t i;
+
+    if (value == NULL) {
+	PyErr_SetString(PyExc_NotImplementedError,
+			"Can not cancel tailoring by each");
+	return -1;
+    }
+    if (tdict->lb == NULL) {
+	PyErr_SetString(PyExc_AttributeError, "parent object has gone");
+	return -1;
+    }
+
+    if (PyInt_Check(value))
+	p = (propval_t) PyInt_AsLong(value);
+    else if (PyLong_Check(value))
+	p = (propval_t) PyLong_AsLong(value);
+    else {
+	PyErr_Format(PyExc_ValueError,
+		     "value must be integer, not %200s",
+		     Py_TYPE(value)->tp_name);
+	return -1;
+    }
+
+    if (PySequence_Check(key)) {
+	for (i = 0; (item = PySequence_GetItem(key, i)) != NULL; i++) {
+	    if ((c = strOrInt_ToUCS(item)) == (unichar_t)(-1)) {
+		Py_DECREF(item);
+		return -1;
+	    }
+	    if (tdict->ttype == TDICT_LBC)
+		linebreak_update_lbclass(LineBreak_AS_CSTRUCT(tdict->lb),
+					 c, p);
+	    else
+		linebreak_update_eawidth(LineBreak_AS_CSTRUCT(tdict->lb),
+					 c, p);
+	    Py_DECREF(item);
+	}
+	PyErr_Clear();
+	return 0;
+    }
+    if ((c = strOrInt_ToUCS(key)) == (unichar_t)(-1))
+	return -1;
+    if (tdict->ttype == TDICT_LBC)
+	linebreak_update_lbclass(LineBreak_AS_CSTRUCT(tdict->lb), c, p);
+    else
+	linebreak_update_eawidth(LineBreak_AS_CSTRUCT(tdict->lb), c, p);
+    return 0;
+}
+
+static int
+tdict_clear(PyObject *self)
+{
+    TDictObject * tdict = (TDictObject *) self;
+
+    if (tdict->lb == NULL)
+	return 0;
+    if (tdict->ttype == TDICT_LBC)
+	linebreak_clear_lbclass(LineBreak_AS_CSTRUCT(tdict->lb));
+    else
+	linebreak_clear_eawidth(LineBreak_AS_CSTRUCT(tdict->lb));
+    return 0;
+}
+
+static PyObject *
+TDict_clear(PyObject *self)
+{
+    if (tdict_clear(self) != 0)
+	return NULL;
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+TDict_get(PyObject *self, PyObject *args)
+{
+    PyObject *key, *failobj = Py_None, *val;
+
+    if (! PyArg_UnpackTuple(args, "get", 1, 2, &key, &failobj))	/* borrowed */
+	return NULL;
+
+    if ((val = PyObject_GetItem(self, key)) == NULL) {
+	PyErr_Clear();
+	val = failobj;
+	Py_INCREF(val);
+    }
+    return val;
+}
+
+static PyObject *
+TDict_setdefault(PyObject *self, PyObject *args)
+{
+    PyObject *key, *failobj = Py_None, *val;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &failobj))	/* borrowed */
+	return NULL;
+
+    if ((val = PyObject_GetItem(self, key)) == NULL) {
+	PyErr_Clear();
+	if (PyObject_SetItem(self, key, failobj) != 0)
+	    return NULL;
+	val = failobj;
+	Py_INCREF(val);
+    }
+    return val;
+}
+
+static int
+tdict_update(PyObject * tdict, PyObject * arg, int clear)
+{
+    Py_ssize_t pos;
+    PyObject *key, *value, *keys, *iter;
+    linebreak_t *dst = NULL, *src = NULL;
+
+    assert(TDict_CheckExact(tdict));
+    assert(arg != NULL);
+
+    if (((TDictObject *) tdict)->lb == NULL) {
+	PyErr_SetString(PyExc_AttributeError, "parent object has gone");
+
+	return -1;
+    }
+    dst = LineBreak_AS_CSTRUCT(((TDictObject *) tdict)->lb);
+    if (TDict_CheckExact(arg)) {
+	if (((TDictObject *) arg)->lb == NULL) {
+	    PyErr_SetString(PyExc_AttributeError, "parent object has gone");
+
+	    return -1;
+	}
+	src = LineBreak_AS_CSTRUCT(((TDictObject *) arg)->lb);
+	if (dst == src)
+	    return 0;
+    }
+
+    if (arg == Py_None || clear)
+	tdict_clear(tdict);
+
+    if (arg == Py_None)
+	;
+    else if (TDict_CheckExact(arg)) {
+	if (((TDictObject *) arg)->ttype == TDICT_LBC)
+	    linebreak_merge_lbclass(dst, src);
+	else
+	    linebreak_merge_eawidth(dst, src);
+	if (dst->errnum) {
+	    errno = dst->errnum;
+	    PyErr_SetFromErrno(PyExc_RuntimeError);
+
+	    return -1;
+	}
+    } else if (PyDict_Check(arg)) {
+	pos = 0;
+	while (PyDict_Next(arg, &pos, &key, &value))
+	    if (PyObject_SetItem(tdict, key, value) != 0)
+		return -1;
+    } else if (PyObject_HasAttrString(arg, "keys")) {
+	if ((keys = PyMapping_Keys(arg)) == NULL)
+	    return -1;
+	iter = PyObject_GetIter(keys);
+	Py_DECREF(keys);
+	if (iter == NULL)
+	    return -1;
+
+	for (key = PyIter_Next(iter); key != NULL; key = PyIter_Next(iter)) {
+	    if ((value = PyObject_GetItem(arg, key)) == NULL) {
+		Py_DECREF(key);
+		Py_DECREF(iter);
+		return -1;
+	    }
+	    if (PyObject_SetItem(tdict, key, value) != 0) {
+		Py_DECREF(value);
+		Py_DECREF(key);
+		Py_DECREF(iter);
+		return -1;
+	    }
+	    Py_DECREF(value);
+	    Py_DECREF(key);
+	}
+
+	Py_DECREF(iter);
+    } else {
+	PyErr_Format(PyExc_TypeError,
+		     "attribute must be dictionary or sequence of tuples, "
+		     "not %200s",
+		     Py_TYPE(arg)->tp_name);
+
+	return -1;
+    }
+    return 0;
+}
+
+static PyObject *
+TDict_update(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *arg = NULL;
+    int result = 0;
+
+    if (! PyArg_UnpackTuple(args, "update", 0, 1, &arg))
+	result = -1;
+    else if (arg != NULL)
+	result = tdict_update(self, arg, 0);
+
+    if (result == 0 && kwds != NULL) {
+#if ! (PY_MAJOR_VERSION <= 2 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 2))
+	if (! PyArg_ValidateKeywordArguments(kwds))
+	    result = -1;
+	else
+#endif
+	result = tdict_update(self, kwds, 0);
+    }
+
+    if (result != 0)
+	return NULL;
+    Py_RETURN_NONE;
+}
+
+/*
+ * Method for debugging use
+ */
+static PyObject *
+TDict_dump(PyObject *self)
+{
+    mapent_t * map;
+    size_t mapsiz, i;
+
+    printf("TYPE = %s\n"
+           "     UCS      LB EA GC SC\n"
+           "------------- -- -- -- --\n",
+	((TDictObject *)self)->ttype == TDICT_LBC ? "lbc" : "eaw");
+
+    if (((TDictObject *)self)->lb == NULL) {
+	printf("inactive\n"
+               "-------------------------\n");
+	Py_RETURN_NONE;
+    }
+    map = LineBreak_AS_CSTRUCT(((TDictObject *)self)->lb)->map;
+    mapsiz = LineBreak_AS_CSTRUCT(((TDictObject *)self)->lb)->mapsiz;
+    if (map == NULL || mapsiz == 0) {
+        printf("empty\n"
+               "-------------------------\n");
+        Py_RETURN_NONE;
+    }
+    for (i = 0; i < mapsiz; i++)
+	printf("%6X-%6X %2d %2d %2d %2d\n",
+	       map[i].beg, map[i].end, (signed char) map[i].lbc,
+	       (signed char) map[i].eaw, (signed char) map[i].gcb,
+	       (signed char) map[i].scr);
+    printf("-------------------------\n");
+    Py_RETURN_NONE;
+}
+
+static PyMappingMethods TDict_as_mapping = {
+    0,				/* mp_length */
+    TDict_subscript,		/* mp_subscript */
+    TDict_ass_subscript		/* mp_ass_subscript */
+};
+
+static PyMethodDef TDict_methods[] = {
+    {"clear", (PyCFunction) TDict_clear, METH_NOARGS, NULL},
+    {"get", (PyCFunction) TDict_get, METH_VARARGS, NULL},
+    {"setdefault", (PyCFunction) TDict_setdefault, METH_VARARGS, NULL},
+    {"update", (PyCFunction) TDict_update, METH_VARARGS | METH_KEYWORDS,
+     NULL},
+    {"_dump", (PyCFunction) TDict_dump, METH_NOARGS, NULL},
+    {NULL,		NULL}   /* sentinel */
+};
+
+
+static PyTypeObject TDict_Type = {
+#if PY_MAJOR_VERSION >= 3
+    PyVarObject_HEAD_INIT(NULL, 0)
+#else				/* PY_MAJOR_VERSION */
+    PyObject_HEAD_INIT(NULL)
+    0,				/*ob_size */
+#endif				/* PY_MAJOR_VERSION */
+    "_textseg.TailoringDict",	/*tp_name */
+    sizeof(TDictObject),	/*tp_basicsize */
+    0,				/*tp_itemsize */
+    (destructor)TDict_dealloc,		/*tp_dealloc */
+    0,				/*tp_print */
+    0,				/*tp_getattr */
+    0,				/*tp_setattr */
+    0,				/*tp_compare */
+    0,				/*tp_repr */
+    0,				/*tp_as_number */
+    0,				/*tp_as_sequence */
+    &TDict_as_mapping,		/*tp_as_mapping */
+    0,				/*tp_hash */
+    0,				/*tp_call */
+    0,				/*tp_str */
+    0,				/*tp_getattro */
+    0,				/*tp_setattro */
+    0,				/*tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,	/*tp_flags */
+    "TailoringDict objects",	/* tp_doc */
+    0,				/* tp_traverse */
+    0,				/* tp_clear */
+    0,				/* tp_richcompare */
+    0,				/* tp_weaklistoffset */
+    0,				/* tp_iter */
+    0,				/* tp_iternext */
+    TDict_methods,		/* tp_methods */
+    0,				/* tp_members */
+    0,				/* tp_getset */
+    0,				/* tp_base */
+    0,				/* tp_dict */
+    0,				/* tp_descr_get */
+    0,				/* tp_descr_set */
+    0,				/* tp_dictoffset */
+    0,				/* tp_init */
+    0,				/* tp_alloc */
+    0,				/* tp_new */
 };
 
 
@@ -2913,6 +3284,10 @@ init_textseg(void)
 	Py_DECREF(LineBreakException);
 	INITERROR;
     }
+    if (PyType_Ready(&TDict_Type) < 0) {
+	Py_DECREF(LineBreakException);
+	INITERROR;
+    }
 #if PY_MAJOR_VERSION >= 3
     m = PyModule_Create(&textseg_def);
 #else				/* PY_MAJOR_VERSION */
@@ -2929,6 +3304,17 @@ init_textseg(void)
     PyModule_AddObject(m, "LineBreak", (PyObject *) & LineBreak_Type);
     Py_INCREF(&GCStr_Type);
     PyModule_AddObject(m, "GCStr", (PyObject *) & GCStr_Type);
+    Py_INCREF(&TDict_Type);
+    PyModule_AddObject(m, "TailoringDict", (PyObject *) & TDict_Type);
+
+    TEXTSEG_SIMPLE = PyString_FromString("simple");
+    TEXTSEG_NEWLINE = PyString_FromString("newline");
+    TEXTSEG_TRIM = PyString_FromString("trim");
+    TEXTSEG_BREAKURI = PyString_FromString("breakuri");
+    TEXTSEG_NONBREAKURI = PyString_FromString("nonbreakuri");
+    TEXTSEG_UAX11 = PyString_FromString("uax11");
+    TEXTSEG_FORCE = PyString_FromString("force");
+    TEXTSEG_RAISE = PyString_FromString("raise");
 
 #if PY_MAJOR_VERSION >= 3
     return m;

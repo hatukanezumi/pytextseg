@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
     setup(
         name="pytextseg",
-        version='0.1.1',
+        version='0.2.0',
         license="GNU General Public License (GPL) or Artistic License",
         description='Python module for text segmentation.',
         long_description=open('README', 'r').read(),

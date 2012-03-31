@@ -21,6 +21,7 @@ def suite():
     modules_to_test = [
         'tests.LineBreakTest',
         'tests.GCStrTest',
+        'tests.TDictTest',
     ]
     alltests = unittest.TestSuite()
     for module in map(my_import, modules_to_test):
@@ -31,7 +32,9 @@ def suite():
 def dump_garbage():
     import gc
     print('\nGarbage:')
-    gc.collect()
+    n = gc.collect()
+    if n:
+        print('\nUncollectable: %d' % n)
     if len(gc.garbage):
     
         print('\nLeaked objects:')
@@ -53,7 +56,7 @@ def runall(report_leaks=0):
         import gc
         gc.enable()
         gc.set_debug(gc.DEBUG_LEAK & ~gc.DEBUG_SAVEALL)
-    
+ 
     import unittest
     
     try:
