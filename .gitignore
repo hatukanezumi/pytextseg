@@ -1,0 +1,6 @@
+build/
+
+*.so
+pytextseg.egg-info/
+tests/*.pyc
+textseg/*.pyc
